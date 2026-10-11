@@ -1,0 +1,65 @@
+# Harmless commands agents ask about anyway: every part allowed by the stock
+# policy, so vetter allows the whole.
+
+[[case]]
+id = "harmless-cd-test"
+shell = "bash"
+command = "cd src && npm run test"
+runs = ["cd", "npm"]
+expect = "allow"
+why = "cd inside the project, then an allowed command (claude-code #28240)"
+source = "https://github.com/anthropics/claude-code/issues/28240"
+
+[[case]]
+id = "harmless-chained-cd"
+shell = "bash"
+command = "cd packages/a && cd ../b && cargo test"
+runs = ["cd", "cd", "cargo"]
+expect = "allow"
+why = "chained cd that stays in the project (opencode #8192)"
+source = "https://github.com/anomalyco/opencode/issues/8192"
+
+[[case]]
+id = "harmless-pipe-grep"
+shell = "bash"
+command = "git log --oneline | grep fix | head -20"
+runs = ["git", "grep", "head"]
+expect = "allow"
+why = "read-only commands in a pipeline"
+source = "derived"
+
+[[case]]
+id = "harmless-redirect-stderr"
+shell = "bash"
+command = "pytest -q 2>&1 | tail -5"
+runs = ["pytest", "tail"]
+expect = "allow"
+why = "2>&1 writes no file"
+source = "derived"
+
+[[case]]
+id = "harmless-for-loop"
+shell = "bash"
+command = "for f in src/*.py; do wc -l \"$f\"; done"
+runs = ["wc"]
+expect = "allow"
+why = "a loop of a read-only command"
+source = "derived"
+
+[[case]]
+id = "harmless-quoted-operators"
+shell = "bash"
+command = "grep -n 'a && b | c; d' README.md"
+runs = ["grep"]
+expect = "allow"
+why = "operators inside quotes are text"
+source = "derived"
+
+[[case]]
+id = "harmless-echo-substitution"
+shell = "bash"
+command = "echo \"branch: $(git rev-parse --abbrev-ref HEAD)\""
+runs = ["git", "echo"]
+expect = "allow"
+why = "the substitution runs an allowed read-only command"
+source = "derived"

@@ -1,0 +1,245 @@
+# Language tools, package managers, interpreters
+[[spec]]
+name = ["go"]
+subcommands = true
+commands = ["bug", "build", "clean", "doc", "env", "fix", "fmt", "generate", "get", "install", "list", "mod", "work",
+            "run", "telemetry", "test", "tool", "version", "vet", "help"]
+[spec.sub.test]
+values = ["-exec", "-run", "-bench", "-count", "-timeout", "-o", "-coverprofile", "-cpuprofile", "-memprofile",
+          "-tags", "-ldflags", "-gcflags", "-p", "-parallel", "-toolexec", "-overlay", "-modfile", "-C"]
+single_dash_long = true
+[spec.sub.test.roles]
+"-exec" = "cmdline"
+"-toolexec" = "cmdline"
+"-o" = "write"
+"-coverprofile" = "write"
+"-C" = "cwd"
+[spec.sub.test.flags]
+"test" = {reason = "runs the project's tests", kind = "project_code"}
+[spec.sub.run]
+values = ["-exec", "-toolexec", "-tags", "-ldflags", "-gcflags", "-overlay", "-modfile", "-C"]
+single_dash_long = true
+[spec.sub.run.roles]
+"-exec" = "cmdline"
+"-toolexec" = "cmdline"
+"-C" = "cwd"
+[spec.sub.run.flags]
+"run" = {reason = "runs the program it builds", kind = "project_code"}
+[spec.sub.build]
+values = ["-o", "-toolexec", "-tags", "-ldflags", "-gcflags", "-overlay", "-modfile", "-C", "-p"]
+single_dash_long = true
+[spec.sub.build.roles]
+"-o" = "write"
+"-toolexec" = "cmdline"
+"-C" = "cwd"
+[spec.sub.generate]
+values = ["-run", "-skip"]
+[spec.sub.generate.flags]
+"generate" = {reason = "runs the //go:generate commands in the sources", kind = "project_code"}
+[spec.sub.install]
+operands = "package"
+
+[[spec]]
+name = ["npm", "pnpm", "yarn", "bun"]
+subcommands = true
+[spec.anywhere]
+"--script-shell" = "program"
+"--node-options" = "configured"
+[spec.sub.exec]
+operands = "package"
+[spec.sub.x]
+operands = "package"
+[spec.sub.dlx]
+operands = "package"
+[spec.sub.run]
+operands = "package_script"
+[spec.sub.run-script]
+operands = "package_script"
+[spec.sub.start]
+operands = "package_script"
+[spec.sub.test]
+operands = "package_script"
+[spec.sub.install]
+operands = "package"
+[spec.sub.i]
+operands = "package"
+[spec.sub.add]
+operands = "package"
+[spec.sub.ci]
+[spec.sub.ci.flags]
+"ci" = {reason = "runs the packages' install scripts", kind = "package"}
+[spec.sub.publish]
+[spec.sub.publish.flags]
+"publish" = "publishes the package"
+
+[[spec]]
+name = ["npx", "pnpx", "bunx", "uvx", "pipx"]
+values = ["-p", "--package", "-c", "--call", "--from", "--with"]
+stop_at_operand = true
+operands = "package"
+[spec.roles]
+"-c" = "shell"
+"--call" = "shell"
+"-p" = "package"
+"--package" = "package"
+"--from" = "package"
+"--with" = "package"
+
+[[spec]]
+name = ["pip", "pip3", "uv"]
+subcommands = true
+# (pip's and uv's)
+commands = ["install", "download", "uninstall", "freeze", "inspect", "list", "show", "check", "config", "search",
+            "cache", "index", "wheel", "hash", "completion", "debug", "help", "run", "init", "add", "remove",
+            "version", "sync", "lock", "export", "tree", "tool", "python", "pip", "venv", "build", "publish", "self"]
+[spec.sub.install]
+values = ["-r", "--requirement", "-c", "--constraint", "-e", "--editable", "-t", "--target", "--index-url",
+          "-i", "--extra-index-url", "--prefix", "--root"]
+operands = "package"
+[spec.sub.install.roles]
+"-r" = "read"
+"--requirement" = "read"
+"-e" = "package"
+"--editable" = "package"
+"-i" = "url"
+"--index-url" = "url"
+"--extra-index-url" = "url"
+[spec.sub.run]
+operands = "program_args"
+
+[[spec]]
+name = ["cargo"]
+subcommands = true
+[spec.anywhere]
+"--config" = "configured"
+"-Z" = "configured"
+commands = ["add", "bench", "build", "b", "check", "c", "clean", "clippy", "doc", "d", "fetch", "fix", "fmt",
+            "generate-lockfile", "help", "info", "init", "install", "locate-project", "login", "logout", "metadata",
+            "new", "owner", "package", "pkgid", "publish", "remove", "report", "run", "r", "rustc", "rustdoc",
+            "search", "test", "t", "tree", "uninstall", "update", "vendor", "verify-project", "version", "yank"]
+[spec.sub.install]
+values = ["--git", "--path", "--root", "--version", "--branch", "--tag", "--rev", "--registry", "--index"]
+operands = "package"
+[spec.sub.install.roles]
+"--git" = "url"
+[spec.sub.run]
+operands = "plain"
+[spec.sub.run.flags]
+"run" = {reason = "runs the program it builds", kind = "project_code"}
+[spec.sub.build]
+[spec.sub.build.flags]
+"build" = {reason = "runs build.rs scripts", kind = "project_code"}
+[spec.sub.check]
+[spec.sub.check.flags]
+"check" = {reason = "runs build.rs scripts", kind = "project_code"}
+[spec.sub.test]
+[spec.sub.test.flags]
+"test" = {reason = "runs build.rs scripts and the tests", kind = "project_code"}
+
+[[spec]]
+name = ["make", "gmake"]
+values = ["-C", "--directory", "-f", "--file", "--makefile", "-j", "--jobs", "-I", "--include-dir", "-o", "-W",
+          "--eval", "-E"]
+# (VAR=value: the Makefile's variable overridden)
+operands = "make"
+[spec.roles]
+"-C" = "cwd"
+"--directory" = "cwd"
+"-f" = "code_file"
+"--file" = "code_file"
+"--makefile" = "code_file"
+"--eval" = "code:make"
+"-E" = "code:make"
+[spec.flags]
+"make" = {reason = "runs the Makefile's recipes", kind = "project_code"}
+
+[[spec]]
+name = ["python", "python3", "python2", "pypy", "pypy3"]
+values = ["-c", "-m", "-W", "-X", "--check-hash-based-pycs"]
+stop_at_operand = true
+stdin_program = true
+operands = ["code_file", "plain*"]
+[spec.roles]
+"-c" = "code:python"
+"-m" = "package"
+
+[[spec]]
+name = ["node", "nodejs", "deno"]
+values = ["-e", "--eval", "-p", "--print", "-r", "--require", "--import", "--loader", "--experimental-loader", "-C",
+          "--conditions"]
+stop_at_operand = true
+stdin_program = true
+operands = ["code_file", "plain*"]
+[spec.roles]
+"-e" = "code:javascript"
+"--eval" = "code:javascript"
+"-p" = "code:javascript"
+"--print" = "code:javascript"
+"-r" = "package"
+"--require" = "package"
+"--import" = "package"
+"--loader" = "package"
+"--experimental-loader" = "package"
+
+[[spec]]
+name = ["perl", "ruby", "php", "lua", "Rscript", "tclsh"]
+# (perl's and ruby's -l and -x are flags, their value only glued on: lua's
+# -l MODULE then is taken as the script, an Unknown: asked)
+values = ["-e", "-E", "-r", "-I", "-M", "-m"]
+stop_at_operand = true
+stdin_program = true
+operands = ["code_file", "plain*"]
+[spec.roles]
+"-e" = "code:script"
+"-E" = "code:script"
+"-r" = "code:script"
+"-M" = "package"
+"-m" = "package"
+
+[[spec]]
+name = ["docker", "podman"]
+subcommands = true
+commands = ["attach", "build", "builder", "buildx", "commit", "compose", "container", "context", "cp", "create",
+            "diff", "events", "exec", "export", "history", "image", "images", "import", "info", "init", "inspect",
+            "kill", "load", "login", "logout", "logs", "manifest", "network", "node", "pause", "plugin", "pod",
+            "port", "ps", "pull", "push", "rename", "restart", "rm", "rmi", "run", "save", "scout", "search",
+            "secret", "service", "stack", "start", "stats", "stop", "swarm", "system", "tag", "top", "trust",
+            "unpause", "update", "version", "volume", "wait"]
+[spec.sub.run]
+values = ["-v", "--volume", "--mount", "-e", "--env", "--env-file", "-p", "--publish", "--name", "-w", "--workdir",
+          "--entrypoint", "-u", "--user", "--network", "--net", "--cap-add", "--device", "--security-opt",
+          "--pid", "--ipc", "--uts", "--userns", "-h", "--hostname", "--label", "-l", "--platform", "--pull",
+          "--restart", "-m", "--memory", "--cpus", "--add-host", "--dns", "--gpus", "--tmpfs"]
+stop_at_operand = true
+operands = ["image", "remote_command*"]
+[spec.sub.run.roles]
+"-v" = "docker_volume"
+"--volume" = "docker_volume"
+"--mount" = "docker_volume"
+"--env-file" = "read"
+"--entrypoint" = "remote_command"
+[spec.sub.run.flags]
+"--privileged" = "a container with the host's devices and capabilities"
+[spec.sub.exec]
+values = ["-e", "--env", "--env-file", "-u", "--user", "-w", "--workdir"]
+stop_at_operand = true
+operands = ["plain", "remote_command*"]
+[spec.sub.build]
+values = ["-f", "--file", "-t", "--tag", "--build-arg", "--target", "--platform", "--secret", "--ssh"]
+[spec.sub.build.flags]
+"build" = {reason = "runs the Dockerfile's RUN steps", kind = "project_code"}
+
+[[spec]]
+name = ["kubectl"]
+subcommands = true
+commands = ["alpha", "annotate", "api-resources", "api-versions", "apply", "attach", "auth", "autoscale",
+            "certificate", "cluster-info", "completion", "config", "cordon", "cp", "create", "debug", "delete",
+            "describe", "diff", "drain", "edit", "events", "exec", "explain", "expose", "get", "kustomize", "label",
+            "logs", "patch", "plugin", "port-forward", "proxy", "replace", "rollout", "run", "scale", "set",
+            "taint", "top", "uncordon", "version", "wait"]
+[spec.sub.exec]
+stop_at_operand = true
+operands = ["plain", "remote_command*"]
+[spec.sub.delete]
+[spec.sub.delete.flags]
+"delete" = "deletes cluster resources"

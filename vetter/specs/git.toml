@@ -1,0 +1,204 @@
+name = ["git"]
+values = ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env",
+          "--exec-path", "--list-cmds", "--attr-source"]
+subcommands = true
+commands = ["add", "am", "annotate", "apply", "archive", "bisect", "blame", "branch", "bundle", "cat-file",
+            "check-attr", "check-ignore", "checkout", "cherry", "cherry-pick", "citool", "clean", "clone", "commit",
+            "commit-tree", "config", "count-objects", "credential", "daemon", "describe", "diff", "diff-files",
+            "diff-index", "diff-tree", "difftool", "fast-export", "fast-import", "fetch", "filter-branch",
+            "for-each-ref", "format-patch", "fsck", "gc", "grep", "gui", "hash-object", "help", "http-backend",
+            "init", "instaweb", "lfs", "log", "ls-files", "ls-remote", "ls-tree", "maintenance", "merge",
+            "merge-base", "merge-file", "mergetool", "mv", "name-rev", "notes", "prune", "pull", "push",
+            "range-diff", "read-tree", "rebase", "receive-pack", "reflog", "remote", "repack", "replace",
+            "request-pull", "reset", "restore", "rev-list", "rev-parse", "revert", "rm", "send-email", "shortlog",
+            "show", "show-branch", "show-ref", "sparse-checkout", "stash", "status", "submodule", "switch",
+            "symbolic-ref", "tag", "update-index", "update-ref", "upload-pack", "var", "verify-commit",
+            "verify-tag", "version", "whatchanged", "worktree", "write-tree"]
+
+[roles]
+"-C" = "cwd"
+"-c" = "git_config"
+"--config-env" = "git_config"
+"--exec-path" = "code_file"
+"--git-dir" = "plain"
+"--work-tree" = "plain"
+
+# Config keys whose value runs something (lowercase; `*` matches a part)
+[config]
+"core.pager" = "shell"
+"core.editor" = "shell"
+"core.sshcommand" = "shell"
+"core.fsmonitor" = "shell"
+"core.hookspath" = "code_file"
+"core.askpass" = "program"
+"core.gitproxy" = "program"
+"core.worktree" = "plain"
+"diff.external" = "program"
+"diff.*.command" = "shell"
+"diff.*.textconv" = "shell"
+"merge.*.driver" = "shell"
+"filter.*.clean" = "shell"
+"filter.*.smudge" = "shell"
+"filter.*.process" = "shell"
+"sequence.editor" = "shell"
+"pager.*" = "shell"
+"alias.*" = "git_alias"
+"credential.helper" = "credential_helper"
+"credential.*.helper" = "credential_helper"
+"gpg.program" = "program"
+"gpg.*.program" = "program"
+"ssh.variant" = "plain"
+"uploadpack.packobjectshook" = "shell"
+"protocol.allow" = "plain"
+"protocol.ext.allow" = "plain"
+"remote.*.uploadpack" = "program"
+"remote.*.receivepack" = "program"
+"remote.*.proxy" = "program"
+"http.proxy" = "plain"
+"include.path" = "code_file"
+"includeif.*.path" = "code_file"
+"init.templatedir" = "code_file"
+"web.browser" = "program"
+"browser.*.cmd" = "shell"
+"mergetool.*.cmd" = "shell"
+"difftool.*.cmd" = "shell"
+"interactive.difffilter" = "shell"
+"color.pager" = "plain"
+
+[sub.log]
+values = ["--output", "-n", "--max-count", "--format", "--pretty", "--author", "--since", "--until", "--grep"]
+[sub.log.roles]
+"--output" = "write"
+[sub.log.flags]
+"--ext-diff" = "runs diff.external or GIT_EXTERNAL_DIFF"
+"--textconv" = "runs the textconv drivers .gitattributes names"
+
+[sub.show]
+values = ["--output", "--format", "--pretty"]
+[sub.show.roles]
+"--output" = "write"
+[sub.show.flags]
+"--ext-diff" = "runs diff.external or GIT_EXTERNAL_DIFF"
+"--textconv" = "runs the textconv drivers .gitattributes names"
+
+[sub.diff]
+# (-U<n>, --unified=<n>: glued on. Its operands revisions or paths, read:
+# --no-index compares any two files, git diff --no-index /flag /dev/null)
+values = ["--output"]
+operands = "read"
+[sub.diff.roles]
+"--output" = "write"
+[sub.diff.flags]
+"--ext-diff" = "runs diff.external or GIT_EXTERNAL_DIFF"
+"--textconv" = "runs the textconv drivers .gitattributes names"
+
+[sub.format-patch]
+values = ["-o", "--output-directory"]
+[sub.format-patch.roles]
+"-o" = "write"
+"--output-directory" = "write"
+
+[sub.archive]
+values = ["-o", "--output", "--format", "--prefix", "--remote", "--exec"]
+[sub.archive.roles]
+"-o" = "write"
+"--output" = "write"
+"--exec" = "program"
+"--remote" = "url"
+
+[sub.clone]
+values = ["-u", "--upload-pack", "-c", "--config", "--template", "-o", "--origin", "-b", "--branch",
+          "--depth", "--reference", "--separate-git-dir"]
+operands = ["url", "write"]
+[sub.clone.roles]
+"-u" = "program"
+"--upload-pack" = "program"
+"-c" = "git_config"
+"--config" = "git_config"
+"--template" = "code_file"
+
+[sub.fetch]
+values = ["--upload-pack", "--depth"]
+operands = ["url", "plain*"]
+[sub.fetch.roles]
+"--upload-pack" = "program"
+
+[sub.pull]
+values = ["--upload-pack", "--depth", "-s", "--strategy", "-X"]
+operands = ["url", "plain*"]
+[sub.pull.roles]
+"--upload-pack" = "program"
+
+[sub.push]
+values = ["--receive-pack", "--exec", "-o", "--push-option"]
+operands = ["url", "plain*"]
+[sub.push.roles]
+"--receive-pack" = "program"
+"--exec" = "program"
+
+[sub.ls-remote]
+values = ["--upload-pack"]
+operands = ["url", "plain*"]
+[sub.ls-remote.roles]
+"--upload-pack" = "program"
+
+[sub.submodule]
+[sub.submodule.flags]
+"update" = "runs update commands .gitmodules may set"
+
+[sub.config]
+values = ["-f", "--file", "--blob"]
+operands = "git_config_set"
+[sub.config.roles]
+"-f" = "read"
+"--file" = "read"
+
+[sub.init]
+values = ["--template", "--separate-git-dir", "-b", "--initial-branch", "--object-format"]
+operands = "write"
+[sub.init.roles]
+# (its hooks copied in: run by the next commit)
+"--template" = "code_file"
+"--separate-git-dir" = "write"
+
+[sub.grep]
+values = ["-f", "-e", "-O", "--open-files-in-pager", "--max-depth", "-A", "-B", "-C"]
+# (its pattern, then paths: read, any file with --no-index)
+operands = ["plain", "read*"]
+pattern_options = ["-e", "-f"]
+[sub.grep.roles]
+"-O" = "program"
+"--open-files-in-pager" = "program"
+"-f" = "read"
+
+[sub.bisect]
+[sub.bisect.flags]
+"run" = "runs a command for each commit"
+
+[sub.rebase]
+values = ["-x", "--exec", "-s", "--strategy", "-X", "--onto"]
+[sub.rebase.roles]
+"-x" = "shell"
+"--exec" = "shell"
+
+[sub.filter-branch]
+values = ["--env-filter", "--tree-filter", "--index-filter", "--parent-filter", "--msg-filter",
+          "--commit-filter", "--tag-name-filter", "--subdirectory-filter"]
+[sub.filter-branch.roles]
+"--env-filter" = "shell"
+"--tree-filter" = "shell"
+"--index-filter" = "shell"
+"--parent-filter" = "shell"
+"--msg-filter" = "shell"
+"--commit-filter" = "shell"
+"--tag-name-filter" = "shell"
+
+[sub.difftool]
+values = ["-x", "--extcmd", "-t", "--tool"]
+[sub.difftool.roles]
+"-x" = "shell"
+"--extcmd" = "shell"
+
+[sub.daemon]
+[sub.daemon.flags]
+"--enable=upload-archive" = "serves the repository"

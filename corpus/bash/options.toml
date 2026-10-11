@@ -1,0 +1,241 @@
+# What a program reads, hidden by how its options were read: a flag of one
+# program taken as the option with a value it is for another (cat -n), an
+# option giving a pattern so the first operand is a file (grep -e), an
+# option whose value is a file read (xargs -a, file -f), a script's pieces
+# read apart (sed -e), a program's own reads (awk getline <), and a program
+# allowed by name taken to allow what it reads. (Reported 2026-10-12: the
+# first five, allowed by the stock policy; the rest found with them.)
+
+[[case]]
+id = "opt-cat-n"
+shell = "bash"
+command = "cat -n /flag"
+allowed_by = "reading in the project"
+runs = ["cat"]
+expect = "ask"
+why = "-n is cat's flag: /flag is read"
+source = "reported"
+
+[[case]]
+id = "opt-xargs-a"
+shell = "bash"
+command = "xargs -a /flag"
+allowed_by = "builtins and wrappers"
+runs = ["xargs", "echo"]
+expect = "ask"
+why = "xargs reads its arguments from /flag, and echo prints them"
+source = "reported"
+
+[[case]]
+id = "opt-file-f"
+shell = "bash"
+command = "file -f /flag"
+allowed_by = "reading in the project"
+runs = ["file"]
+expect = "ask"
+why = "file reads the names to look at from /flag, and prints them"
+source = "reported"
+
+[[case]]
+id = "opt-sed-e-block"
+shell = "bash"
+command = "sed -n -e '1{e cat /flag' -e '}' README.md"
+allowed_by = "reading in the project"
+runs = ["sed", "cat"]
+expect = "ask"
+why = "the -e pieces are one script: a block running e cat /flag"
+source = "reported"
+
+[[case]]
+id = "opt-awk-getline-file"
+shell = "bash"
+command = "awk 'BEGIN { while ((getline line < \"/flag\") > 0) print line }' README.md"
+allowed_by = "reading in the project"
+runs = ["awk"]
+expect = "ask"
+why = "getline < \"/flag\" reads it"
+source = "reported"
+
+[[case]]
+id = "opt-grep-e"
+shell = "bash"
+command = "grep -e root /etc/shadow"
+allowed_by = "reading in the project"
+runs = ["grep"]
+expect = "deny"
+why = "with -e, the first operand is a file"
+source = "derived"
+
+[[case]]
+id = "opt-rg-e"
+shell = "bash"
+command = "rg -e x ~/.ssh/id_rsa"
+allowed_by = "reading in the project"
+runs = ["rg"]
+expect = "deny"
+why = "with -e, the first operand is a file"
+source = "derived"
+
+[[case]]
+id = "opt-grep-T"
+shell = "bash"
+command = "grep -T x ~/.ssh/id_rsa"
+allowed_by = "reading in the project"
+runs = ["grep"]
+expect = "deny"
+why = "-T is grep's flag (rg's -T takes a type)"
+source = "derived"
+
+[[case]]
+id = "opt-ls-d"
+shell = "bash"
+command = "ls -d ~/.ssh"
+allowed_by = "reading in the project"
+runs = ["ls"]
+expect = "deny"
+why = "-d is ls's flag (du's -d takes a depth)"
+source = "derived"
+
+[[case]]
+id = "opt-sed-i-startup"
+shell = "bash"
+command = "sed -i 's/a/b/' ~/.bashrc"
+runs = ["sed"]
+expect = "deny"
+why = "-i takes a suffix only glued on: the script is the next word, ~/.bashrc written"
+source = "derived"
+
+[[case]]
+id = "opt-gzip-c"
+shell = "bash"
+command = "gzip -c ~/.ssh/id_rsa"
+runs = ["gzip"]
+expect = "deny"
+why = "gzip reads its files"
+source = "derived"
+
+[[case]]
+id = "opt-sed-e-to-line-end"
+shell = "bash"
+command = "sed '1e cat /flag; rm -rf ~' README.md"
+allowed_by = "reading in the project"
+runs = ["sed", "cat", "rm"]
+expect = "deny"
+why = "e's command is the rest of the line, ; and all"
+source = "derived"
+
+[[case]]
+id = "opt-sed-second-address"
+shell = "bash"
+command = "sed '/a/,/b/e rm -rf ~' README.md"
+allowed_by = "reading in the project"
+runs = ["sed", "rm"]
+expect = "deny"
+why = "an e after a range of two /re/ addresses"
+source = "derived"
+
+[[case]]
+id = "opt-sed-glued-e"
+shell = "bash"
+command = "sed -es/x/y/ ~/.ssh/id_rsa"
+runs = ["sed"]
+expect = "deny"
+why = "-e's script glued on: the operand is a file"
+source = "derived"
+
+[[case]]
+id = "opt-awk-argv"
+shell = "bash"
+command = "awk 'BEGIN{ARGV[1]=\"/flag\"; ARGC=2} {print}'"
+runs = ["awk"]
+expect = "ask"
+why = "ARGV set: awk reads the file named there"
+source = "derived"
+
+[[case]]
+id = "opt-awk-print-to-variable"
+shell = "bash"
+command = "awk '{f=\"/home/user/.bashrc\"; print \"x\" > f}' README.md"
+allowed_by = "reading in the project"
+runs = ["awk"]
+expect = "ask"
+why = "print > f: a file named when it runs"
+source = "derived"
+
+[[case]]
+id = "opt-awk-pipe-to-variable"
+shell = "bash"
+command = "awk 'BEGIN{c=\"id\"; print \"x\" | c}'"
+runs = ["awk"]
+expect = "ask"
+why = "print | c runs c"
+source = "derived"
+
+[[case]]
+id = "opt-xargs-i"
+shell = "bash"
+command = "echo ~/work | xargs -i rm -rf {}"
+allowed_by = "builtins and wrappers"
+runs = ["echo", "xargs", "rm"]
+expect = "deny"
+why = "-i takes its value only glued on: rm is the command"
+source = "derived"
+
+[[case]]
+id = "opt-touch-m"
+shell = "bash"
+command = "touch -m ~/.bashrc"
+runs = ["touch"]
+expect = "deny"
+why = "-m is touch's flag (mkdir's -m takes a mode)"
+source = "derived"
+
+[[case]]
+id = "opt-read-builtin-redirect"
+shell = "bash"
+command = "read -r x < /flag; echo \"$x\""
+allowed_by = "builtins and wrappers"
+runs = ["read", "echo"]
+expect = "ask"
+why = "a builtin allowed by name: what it reads still the places' rules'"
+source = "derived"
+
+[[case]]
+id = "opt-gcc-E"
+shell = "bash"
+command = "gcc -E /flag"
+allowed_by = "language tools"
+runs = ["gcc"]
+expect = "ask"
+why = "gcc -E prints what it reads"
+source = "derived"
+
+[[case]]
+id = "opt-git-diff-no-index"
+shell = "bash"
+command = "git diff --no-index /flag /dev/null"
+allowed_by = "git, locally"
+runs = ["git"]
+expect = "ask"
+why = "--no-index compares any two files"
+source = "derived"
+
+[[case]]
+id = "opt-git-config-file"
+shell = "bash"
+command = "git config -f /flag --list"
+allowed_by = "git, locally"
+runs = ["git"]
+expect = "ask"
+why = "git config -f reads the file and prints it"
+source = "derived"
+
+[[case]]
+id = "opt-git-init-template"
+shell = "bash"
+command = "git init --template=/opt/shared/tpl repo"
+allowed_by = "git, locally"
+runs = ["git"]
+expect = "ask"
+why = "the template's hooks are copied in, run by the next commit"
+source = "derived"

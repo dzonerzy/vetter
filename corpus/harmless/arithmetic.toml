@@ -1,0 +1,74 @@
+# Arithmetic as it's usually written: on counters, counts and lengths, which
+# are numbers (nothing in them runs).
+
+[[case]]
+id = "harmless-arith-for"
+shell = "bash"
+command = "for ((i=0;i<10;i++)); do echo $((i*2)); done"
+runs = ["echo"]
+expect = "allow"
+why = "the counter is a number"
+source = "derived"
+
+[[case]]
+id = "harmless-arith-while-counter"
+shell = "bash"
+command = "i=0; while (( i < 10 )); do (( i++ )); done; echo $(( i + 1 ))"
+runs = ["echo"]
+expect = "allow"
+why = "a number before the loop, a number in it"
+source = "derived"
+
+[[case]]
+id = "harmless-arith-line-count"
+shell = "bash"
+command = "n=$(wc -l < notes.txt); echo $((n + 1))"
+runs = ["wc", "echo"]
+expect = "allow"
+why = "wc prints a number"
+source = "derived"
+
+[[case]]
+id = "harmless-arith-sum-counts"
+shell = "bash"
+command = "total=0; for f in *.txt; do total=$((total + $(wc -l < \"$f\"))); done; echo $total"
+runs = ["wc", "echo"]
+expect = "allow"
+why = "a sum of counts"
+source = "derived"
+
+[[case]]
+id = "harmless-arith-grep-count"
+shell = "bash"
+command = "count=$(grep -c TODO README.md); (( count > 0 )) && echo todo"
+runs = ["grep", "echo"]
+expect = "allow"
+why = "grep -c prints a number"
+source = "derived"
+
+[[case]]
+id = "harmless-arith-specials"
+shell = "bash"
+command = "status=$?; [[ $status -ne 0 || $# -gt 0 ]] && echo $((RANDOM % 10))"
+runs = ["echo"]
+expect = "allow"
+why = "$?, $#: numbers; RANDOM the shell's"
+source = "derived"
+
+[[case]]
+id = "harmless-arith-lengths"
+shell = "bash"
+command = "arr=(a b c); s=hello; echo ${#arr[@]} ${arr[1]} ${arr[@]:1} ${s:1:3}"
+runs = ["echo"]
+expect = "allow"
+why = "lengths, known subscripts and offsets"
+source = "derived"
+
+[[case]]
+id = "harmless-arith-assoc"
+shell = "bash"
+command = "declare -A seen; while read -r k; do seen[$k]=1; done < keys.txt; echo ${#seen[@]}"
+runs = ["declare", "read", "echo"]
+expect = "allow"
+why = "an associative array's keys aren't arithmetic"
+source = "derived"

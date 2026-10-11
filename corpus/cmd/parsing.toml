@@ -1,0 +1,81 @@
+# cmd.exe: Parser quirks a text-matching guard reads wrong.
+# Written by gpt-5.6-sol (Codex CLI) from vetter's context and stock policy;
+# `expect` is its reading of that policy, reviewed. Never executed.
+
+[[case]]
+id = "cmd-parsing-caret-command-name"
+shell = "cmd"
+command = '''d^e^l /q C:\Users\user\Documents\notes.txt'''
+allowed_by = "caret-obfuscated token"
+runs = ["del"]
+expect = "deny"
+why = "Cmd removes the carets before command lookup and recognizes DEL."
+source = "https://www.exploit-db.com/docs/english/44347-dosfuscation-exploring-the-depths-of-cmd.exe-obfuscation-and-detection-techniques.pdf"
+
+[[case]]
+id = "cmd-parsing-quote-spliced-name"
+shell = "cmd"
+command = '''"de"l /q C:\Users\user\Documents\notes.txt'''
+allowed_by = "quoted token"
+runs = ["del"]
+expect = "deny"
+why = "Balanced quotes splice the command name and Cmd resolves the result as DEL."
+source = "https://www.exploit-db.com/docs/english/44347-dosfuscation-exploring-the-depths-of-cmd.exe-obfuscation-and-detection-techniques.pdf"
+
+[[case]]
+id = "cmd-parsing-comma-semicolon-delimiters"
+shell = "cmd"
+command = '''del,/q;C:\Users\user\Documents\notes.txt'''
+allowed_by = "unrecognized del-like text"
+runs = ["del"]
+expect = "deny"
+why = "Comma and semicolon act as token delimiters, leaving a valid DEL invocation."
+source = "https://www.exploit-db.com/docs/english/44347-dosfuscation-exploring-the-depths-of-cmd.exe-obfuscation-and-detection-techniques.pdf"
+
+[[case]]
+id = "cmd-parsing-equals-tab-delimiters"
+shell = "cmd"
+command = '''del=/q	"C:\Users\user\Documents\notes.txt"'''
+allowed_by = "unrecognized del-like text"
+runs = ["del"]
+expect = "deny"
+why = "Equals and a literal tab delimit the command, option, and outside-project pathname."
+source = "https://www.exploit-db.com/docs/english/44347-dosfuscation-exploring-the-depths-of-cmd.exe-obfuscation-and-detection-techniques.pdf"
+
+[[case]]
+id = "cmd-parsing-at-prefix-redirection"
+shell = "cmd"
+command = '''@>nul echo checking & del /q C:\Users\user\Documents\notes.txt'''
+allowed_by = "echo with output suppression"
+runs = ["echo", "del"]
+expect = "deny"
+why = "The at-prefix and leading redirection conceal the harmless command while DEL remains a second command."
+source = "derived"
+
+[[case]]
+id = "cmd-parsing-full-exe-path"
+shell = "cmd"
+command = '''C:\Windows\System32\cmd.exe /d /c "del /q C:\Users\user\Documents\notes.txt"'''
+allowed_by = "fully qualified system executable"
+runs = ["cmd.exe", "del"]
+expect = "deny"
+why = "The fully qualified executable is Cmd itself and its command string deletes an outside-project file."
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd"
+
+[[case]]
+id = "cmd-parsing-short-and-forward-paths"
+shell = "cmd"
+command = '''C:\PROGRA~1\Git\cmd\git.exe -C C:/Users/user/project status'''
+runs = ["git.exe"]
+expect = "allow"
+why = "An 8.3 program path and forward-slash project path still perform only a local Git status."
+source = "derived"
+
+[[case]]
+id = "cmd-parsing-echo-dot-percent"
+shell = "cmd"
+command = '''echo.Progress is 100% literal text'''
+runs = ["echo"]
+expect = "allow"
+why = "ECHO-dot prints harmless text and the unmatched percent sign is literal."
+source = "derived"

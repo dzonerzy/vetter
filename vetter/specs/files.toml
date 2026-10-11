@@ -1,0 +1,535 @@
+# Programs that read, write and delete files
+[[spec]]
+name = ["rm", "unlink", "shred"]
+values = ["-n", "--iterations", "-s", "--size", "--random-source"]
+operands = "delete"
+[spec.roles]
+"--random-source" = "read"
+
+[[spec]]
+name = ["rmdir"]
+operands = "delete"
+
+[[spec]]
+name = ["cp", "install"]
+values = ["-t", "--target-directory", "-S", "--suffix", "--backup", "-m", "--mode", "-o", "--owner", "-g", "--group"]
+operands = ["read*", "write"]
+[spec.roles]
+"-t" = "write"
+"--target-directory" = "write"
+
+[[spec]]
+name = ["mv"]
+values = ["-t", "--target-directory", "-S", "--suffix", "--backup"]
+operands = ["delete*", "write"]
+[spec.roles]
+"-t" = "write"
+"--target-directory" = "write"
+
+[[spec]]
+name = ["ln"]
+values = ["-t", "--target-directory", "-S", "--suffix"]
+# (each link written; what it points to read and written: through it)
+operands = "ln"
+[spec.roles]
+"-t" = "write"
+"--target-directory" = "write"
+
+# (each program its own options taking a value: one's flag is another's
+# option, and a flag taken for one hides the operand after it: touch -m)
+[[spec]]
+name = ["touch"]
+values = ["-d", "--date", "-r", "--reference", "-t", "--time"]
+operands = "write"
+[spec.roles]
+"-r" = "read"
+"--reference" = "read"
+
+[[spec]]
+name = ["mkdir", "mkfifo", "mknod"]
+# (-Z and --context take a value only glued on: --context=CTX)
+values = ["-m", "--mode"]
+operands = "write"
+
+[[spec]]
+name = ["truncate"]
+values = ["-s", "--size", "-r", "--reference"]
+operands = "write"
+[spec.roles]
+"-r" = "read"
+"--reference" = "read"
+
+[[spec]]
+name = ["chmod", "chown", "chgrp"]
+values = ["--reference", "--from"]
+operands = ["plain", "write*"]
+
+[[spec]]
+name = ["chattr"]
+values = ["-v", "-p"]
+operands = ["plain", "write*"]
+
+[[spec]]
+name = ["setfacl"]
+values = ["-m", "--modify", "-x", "--remove", "-M", "--modify-file", "-X", "--remove-file", "--set", "--set-file"]
+operands = "write"
+[spec.roles]
+"-M" = "read"
+"--modify-file" = "read"
+"-X" = "read"
+"--remove-file" = "read"
+"--set-file" = "read"
+
+[[spec]]
+name = ["tee"]
+operands = "write"
+
+[[spec]]
+name = ["dd"]
+operands = "dd_operands"
+
+# Programs that read their operands. Each has its own options taking a value
+# (GNU's; an option whose value is optional, -w[N], --color[=WHEN], takes
+# one only glued on: not listed). One program's flag is another's option
+# with a value, and a flag taken as one hides the file after it: cat -n.
+[[spec]]
+name = ["cat", "rev", "md5sum", "sha1sum", "sha224sum", "sha256sum", "sha384sum", "sha512sum", "sum", "nproc"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["b2sum", "cksum"]
+values = ["-a", "--algorithm", "-l", "--length"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["tac"]
+values = ["-s", "--separator"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["head"]
+values = ["-n", "--lines", "-c", "--bytes"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["tail"]
+values = ["-n", "--lines", "-c", "--bytes", "-s", "--sleep-interval", "--pid", "--max-unchanged-stats"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["wc"]
+values = ["--files0-from"]
+operands = "read"
+readonly = true
+[spec.roles]
+"--files0-from" = "read"
+
+[[spec]]
+name = ["less"]
+values = ["-b", "--buffers", "-h", "--max-back-scroll", "-j", "--jump-target", "-k", "--lesskey-file", "-o",
+          "--log-file", "-O", "--LOG-FILE", "-p", "--pattern", "-P", "--prompt", "-t", "--tag", "-T", "--tag-file",
+          "-x", "--tabs", "-y", "--max-forw-scroll", "-z", "--window", "-#", "--shift"]
+operands = "read"
+readonly = true
+[spec.roles]
+"-o" = "write"
+"--log-file" = "write"
+"-O" = "write"
+"--LOG-FILE" = "write"
+"-k" = "read"
+"--lesskey-file" = "read"
+"-T" = "read"
+"--tag-file" = "read"
+
+[[spec]]
+name = ["more"]
+values = ["-n", "--lines"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["sort"]
+values = ["-k", "--key", "-t", "--field-separator", "-o", "--output", "-S", "--buffer-size", "-T",
+          "--temporary-directory", "--parallel", "--batch-size", "--compress-program", "--files0-from",
+          "--random-source"]
+operands = "read"
+readonly = true
+[spec.roles]
+"-o" = "write"
+"--output" = "write"
+"-T" = "write"
+"--temporary-directory" = "write"
+"--compress-program" = "program"
+"--files0-from" = "read"
+"--random-source" = "read"
+
+[[spec]]
+name = ["uniq"]
+values = ["-f", "--skip-fields", "-s", "--skip-chars", "-w", "--check-chars"]
+# (uniq IN OUT: OUT written)
+operands = ["read", "write"]
+readonly = true
+
+[[spec]]
+name = ["cut"]
+values = ["-b", "--bytes", "-c", "--characters", "-f", "--fields", "-d", "--delimiter", "--output-delimiter"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["nl"]
+values = ["-b", "--body-numbering", "-d", "--section-delimiter", "-f", "--footer-numbering", "-h",
+          "--header-numbering", "-i", "--line-increment", "-l", "--join-blank-lines", "-n", "--number-format", "-s",
+          "--number-separator", "-v", "--starting-line-number", "-w", "--number-width"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["od"]
+values = ["-A", "--address-radix", "-j", "--skip-bytes", "-N", "--read-bytes", "-S", "-t", "--format"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["xxd"]
+values = ["-c", "-cols", "-g", "-groupsize", "-l", "-len", "-o", "-offset", "-s", "-seek", "-n", "-name"]
+single_dash_long = true
+# (xxd IN OUT: OUT written)
+operands = ["read", "write"]
+readonly = true
+
+[[spec]]
+name = ["hexdump", "hd"]
+values = ["-e", "-f", "-n", "-s"]
+operands = "read"
+readonly = true
+[spec.roles]
+"-f" = "read"
+
+[[spec]]
+name = ["strings"]
+values = ["-n", "--bytes", "-t", "--radix", "-e", "--encoding", "-T", "--target", "-s", "--output-separator"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["file"]
+values = ["-f", "--files-from", "-m", "--magic-file", "-F", "--separator", "-e", "--exclude", "-P", "--parameter",
+          "--exclude-quiet"]
+operands = "read"
+readonly = true
+[spec.roles]
+"-f" = "read"
+"--files-from" = "read"
+"-m" = "read"
+"--magic-file" = "read"
+
+[[spec]]
+name = ["stat"]
+values = ["-c", "--format", "--printf"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["base64", "base32", "basenc"]
+values = ["-w", "--wrap"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["diff"]
+values = ["-C", "-U", "-D", "--ifdef", "-F", "--show-function-line", "-I", "--ignore-matching-lines", "-x",
+          "--exclude", "-X", "--exclude-from", "-S", "--starting-file", "-L", "--label", "-W", "--width",
+          "--from-file", "--to-file", "--tabsize", "--horizon-lines", "--line-format", "--old-line-format",
+          "--new-line-format", "--unchanged-line-format", "--old-group-format", "--new-group-format",
+          "--changed-group-format", "--unchanged-group-format"]
+operands = "read"
+readonly = true
+[spec.roles]
+"-X" = "read"
+"--exclude-from" = "read"
+"--from-file" = "read"
+"--to-file" = "read"
+
+[[spec]]
+name = ["cmp"]
+values = ["-i", "--ignore-initial", "-n", "--bytes"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["fold"]
+values = ["-w", "--width"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["fmt"]
+values = ["-w", "--width", "-g", "--goal", "-p", "--prefix"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["pr"]
+values = ["-h", "--header", "-l", "--length", "-o", "--indent", "-w", "--width", "-W", "--page-width", "-N",
+          "--first-line-number", "-D", "--date-format"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["column"]
+values = ["-c", "--output-width", "-s", "--separator", "-o", "--output-separator", "-N", "--table-columns", "-l",
+          "--table-columns-limit", "-R", "--table-right", "-E", "--table-noextreme", "-H", "--table-hide", "-O",
+          "--table-order", "-W", "--table-wrap", "-T", "--table-truncate", "-r", "--tree", "-i", "--tree-id", "-p",
+          "--tree-parent", "-n", "--table-name"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["jq"]
+# (--rawfile NAME FILE, --slurpfile NAME FILE: the name taken, the file an
+# operand, read as each is: the filter's operand read too, a path that isn't)
+values = ["--indent", "-L", "--arg", "--argjson", "--slurpfile", "--rawfile", "-f", "--from-file"]
+operands = "read"
+readonly = true
+[spec.roles]
+"-f" = "read"
+"--from-file" = "read"
+
+[[spec]]
+name = ["yq"]
+values = ["-o", "--output-format", "-p", "--input-format", "-I", "--indent", "--from-file", "--expression"]
+operands = "read"
+readonly = true
+[spec.roles]
+"--from-file" = "read"
+
+[[spec]]
+name = ["bat", "batcat"]
+values = ["-l", "--language", "-H", "--highlight-line", "-r", "--line-range", "--style", "--theme", "--tabs",
+          "--wrap", "--terminal-width", "-m", "--map-syntax", "--file-name", "--diff-context", "--pager", "--color",
+          "--italic-text", "--decorations", "--paging", "--ignored-suffix"]
+operands = "read"
+readonly = true
+[spec.roles]
+"--pager" = "cmdline"
+
+# grep: the first operand is the pattern, unless -e or -f gave it
+[[spec]]
+name = ["grep", "egrep", "fgrep", "zgrep"]
+values = ["-e", "--regexp", "-f", "--file", "-m", "--max-count", "-A", "--after-context", "-B", "--before-context",
+          "-C", "--context", "--include", "--exclude", "--exclude-dir", "--exclude-from", "-d", "--directories", "-D",
+          "--devices", "--label", "--group-separator", "--binary-files"]
+operands = ["plain", "read*"]
+pattern_options = ["-e", "--regexp", "-f", "--file"]
+readonly = true
+[spec.roles]
+"-f" = "read"
+"--file" = "read"
+"--exclude-from" = "read"
+
+[[spec]]
+name = ["rg"]
+values = ["-e", "--regexp", "-f", "--file", "-m", "--max-count", "-A", "--after-context", "-B", "--before-context",
+          "-C", "--context", "-g", "--glob", "--iglob", "-t", "--type", "-T", "--type-not", "--type-add",
+          "--type-clear", "--pre", "--pre-glob", "-E", "--encoding", "-M", "--max-columns", "-d", "--max-depth",
+          "--max-filesize", "--path-separator", "-r", "--replace", "--sort", "--sortr", "--colors", "--color", "-j",
+          "--threads", "--ignore-file", "--engine", "--dfa-size-limit", "--regex-size-limit", "--context-separator",
+          "--field-context-separator", "--field-match-separator", "--hostname-bin", "--hyperlink-format"]
+operands = ["plain", "read*"]
+pattern_options = ["-e", "--regexp", "-f", "--file"]
+readonly = true
+[spec.roles]
+"-f" = "read"
+"--file" = "read"
+"--ignore-file" = "read"
+"--pre" = "program"
+"--hostname-bin" = "program"
+
+[[spec]]
+name = ["ag"]
+values = ["-A", "--after", "-B", "--before", "-C", "--context", "-G", "--file-search-regex", "-g", "-m",
+          "--max-count", "--depth", "--pager", "-p", "--path-to-ignore", "--ignore", "--ignore-dir", "-W", "--width"]
+operands = ["plain", "read*"]
+readonly = true
+[spec.roles]
+"--pager" = "cmdline"
+"-p" = "read"
+"--path-to-ignore" = "read"
+
+[[spec]]
+name = ["ls", "dir", "vdir"]
+values = ["-I", "--ignore", "-w", "--width", "--block-size", "--time-style", "-T", "--tabsize", "--format", "--hide",
+          "--indicator-style", "--quoting-style", "--sort", "--time"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["tree"]
+values = ["-L", "-P", "-I", "-o", "--filelimit", "--timefmt", "-H", "-T", "--charset", "--sort"]
+operands = "read"
+readonly = true
+[spec.roles]
+"-o" = "write"
+
+[[spec]]
+name = ["du"]
+values = ["-B", "--block-size", "-d", "--max-depth", "-t", "--threshold", "--time-style", "--exclude", "-X",
+          "--exclude-from", "--files0-from"]
+operands = "read"
+readonly = true
+[spec.roles]
+"-X" = "read"
+"--exclude-from" = "read"
+"--files0-from" = "read"
+
+[[spec]]
+name = ["df"]
+values = ["-B", "--block-size", "-t", "--type", "-x", "--exclude-type"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["realpath"]
+values = ["--relative-to", "--relative-base"]
+operands = "read"
+readonly = true
+
+# (names, not files: what they print is the text they're given)
+[[spec]]
+name = ["basename"]
+values = ["-s", "--suffix"]
+operands = "plain"
+readonly = true
+
+[[spec]]
+name = ["dirname"]
+operands = "plain"
+readonly = true
+
+[[spec]]
+name = ["readlink", "pwd", "which", "whereis"]
+operands = "read"
+readonly = true
+
+[[spec]]
+name = ["find"]
+values = ["-name", "-iname", "-path", "-ipath", "-wholename", "-regex", "-iregex", "-type", "-xtype", "-maxdepth",
+          "-mindepth", "-newer", "-anewer", "-cnewer", "-size", "-mtime", "-mmin", "-atime", "-amin", "-ctime",
+          "-cmin", "-perm", "-user", "-group", "-uid", "-gid", "-links", "-inum", "-samefile", "-printf",
+          "-fprint", "-fprint0", "-fprintf", "-fls", "-files0-from", "-regextype", "-context", "-used", "-fstype"]
+operands = "read"
+readonly = true
+single_dash_long = true
+[spec.roles]
+"-fprint" = "write"
+"-fprint0" = "write"
+"-fprintf" = "write"
+"-fls" = "write"
+"-files0-from" = "read"
+[spec.flags]
+"-delete" = {reason = "deletes the files it finds", kind = "delete_starts"}
+
+[[spec]]
+name = ["sed", "gsed"]
+# (-i's suffix, --in-place's, only glued on: -i.bak)
+values = ["-e", "--expression", "-f", "--file", "-l", "--line-length"]
+attached = ["-e", "-f", "-l"]
+operands = "sed"
+[spec.roles]
+"-e" = "sed_script"
+"--expression" = "sed_script"
+"-f" = "code_file"
+"--file" = "code_file"
+
+[[spec]]
+name = ["awk", "gawk", "mawk", "nawk"]
+values = ["-F", "-v", "-f", "--file", "-i", "--include", "-l", "--load", "-e", "--source"]
+attached = ["-F", "-v", "-f", "-i", "-l", "-e"]
+operands = "awk"
+[spec.roles]
+"-f" = "code_file"
+"--file" = "code_file"
+"-e" = "awk_program"
+"--source" = "awk_program"
+"-i" = "code_file"
+"-l" = "code_file"
+
+[[spec]]
+name = ["tar", "bsdtar", "gtar"]
+values = ["-f", "--file", "-C", "--directory", "-T", "--files-from", "-X", "--exclude-from", "--exclude",
+          "-I", "--use-compress-program", "--to-command", "--rsh-command", "--info-script", "-F",
+          "--new-volume-script", "--checkpoint-action", "-b", "--blocking-factor", "-H", "--format", "-V",
+          "--label", "-N", "--newer", "--transform", "--xform", "--owner", "--group", "--mode"]
+operands = "plain"
+[spec.roles]
+"-C" = "cwd"
+"--directory" = "cwd"
+"-T" = "read"
+"--files-from" = "read"
+"-I" = "cmdline"
+"--use-compress-program" = "cmdline"
+"--to-command" = "shell"
+"--rsh-command" = "program"
+"--info-script" = "shell"
+"-F" = "shell"
+"--new-volume-script" = "shell"
+"--checkpoint-action" = "tar_checkpoint"
+
+# Compressors: each file read (and, without -c, written compressed or
+# expanded beside it: the policy sees the read)
+[[spec]]
+name = ["gzip", "gunzip", "zcat", "bzip2", "bunzip2", "bzcat", "xz", "unxz", "xzcat", "lzma", "unlzma", "lzcat"]
+values = ["-S", "--suffix", "-T", "--threads", "-F", "--format", "-C", "--check", "-M", "--memlimit",
+          "--memlimit-compress", "--memlimit-decompress", "--block-size", "--block-list"]
+operands = "read"
+
+[[spec]]
+name = ["zstd", "unzstd", "zstdcat"]
+values = ["-o", "-D", "-T", "--threads", "-B", "--block-size", "--maxdict", "--dictID", "--memory", "--format",
+          "--filelist", "--output-dir-flat", "--output-dir-mirror", "--trace", "--target-compressed-block-size"]
+operands = "read"
+[spec.roles]
+"-o" = "write"
+"-D" = "read"
+"--filelist" = "read"
+"--output-dir-flat" = "write"
+"--output-dir-mirror" = "write"
+
+# zip ARCHIVE FILE...: the archive written, the files read
+[[spec]]
+name = ["zip"]
+values = ["-b", "--temp-path", "-n", "--suffixes", "-t", "--from-date", "-tt", "--before-date", "-P", "--password",
+          "-TT", "--unzip-command", "-O", "--output-file", "-Z", "--compression-method", "-s", "--split-size", "-sb",
+          "-sp", "-sv", "-ll", "-la", "-lf", "-li"]
+single_dash_long = true
+operands = ["write", "read*"]
+[spec.roles]
+"-TT" = "shell"
+"--unzip-command" = "shell"
+"-O" = "write"
+"--output-file" = "write"
+"-lf" = "write"
+
+# unzip ARCHIVE [MEMBER...] [-x MEMBER...] [-d DIR]
+[[spec]]
+name = ["unzip"]
+values = ["-d", "-P", "-I", "-O"]
+operands = ["read", "plain*"]
+[spec.roles]
+"-d" = "write"
+
+[[spec]]
+name = ["7z", "7za", "7zr"]
+# (its values glued on: -oDIR, -pPASSWORD)
+attached = ["-o", "-p", "-t", "-m", "-x", "-i", "-w"]
+# (7z COMMAND ARCHIVE FILE...: the archive and the files read)
+operands = ["plain", "read*"]
+[spec.roles]
+"-o" = "write"
+"-w" = "write"

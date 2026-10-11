@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vetter"
+version = "0.0.1"
+description = "Vets every command your AI agent wants to run: bash read exactly as bash reads it, decided by a policy."
+requires-python = ">=3.11"
+readme = "README.md"
+authors = [{ name = "Daniele Linguaglossa" }]
+# (zrun: vetter is its strict subset, run by it; 0.7.2: native I/O, node.find,
+# Unicode isalnum; 0.7.3: a helper's change to its caller's list compiled
+# right. zgram: the grammars, as zrun 0.7 needs it; zrules: the policies'
+# checks)
+dependencies = ["zrun-py>=0.7.3,<0.8", "zgram-py>=0.6,<0.7", "zrules-py>=0.2.0,<0.3"]
+
+[project.optional-dependencies]
+# (vetter.build: the hook as an executable, libvetter)
+build = ["zrun-py[exe]>=0.7.3,<0.8"]
+
+[project.scripts]
+vetter = "vetter.cli:main"
+
+[tool.hatch.build.targets.wheel]
+# (the specs' .toml and the policies' .vet go with it)
+packages = ["vetter"]

@@ -1,0 +1,136 @@
+# Windows programs (cmd's internal commands are read in shells/cmd): what
+# their arguments are. Options are /x or /x:value (slash_options); roles as
+# in README.md, and `source` (a URL or a UNC share, else a file read),
+# `code_source` (code run from a file, or from a URL: running what it
+# downloads), `reg_write` / `reg_delete` (a registry key: HKCU\..., as
+# HKCU:/... for the policy).
+
+[[spec]]
+name = ["findstr"]
+slash_options = true
+values = ["/d"]
+operands = ["plain", "read*"]
+readonly = true
+[spec.roles]
+"/g" = "read"
+"/f" = "read"
+
+[[spec]]
+name = ["where", "whoami", "hostname", "systeminfo", "tasklist", "ipconfig", "getmac", "driverquery", "chcp"]
+slash_options = true
+operands = "plain"
+readonly = true
+
+[[spec]]
+name = ["fc", "comp", "more"]
+slash_options = true
+operands = "read"
+readonly = true
+
+[[spec]]
+# (certutil -urlcache -f URL out, -decode in out, -encode in out)
+name = ["certutil"]
+single_dash_long = true
+slash_options = true
+values = ["-config", "-p"]
+operands = ["source", "write"]
+
+[[spec]]
+# (bitsadmin /transfer NAME [/download] [/priority P] URL FILE)
+name = ["bitsadmin"]
+slash_options = true
+values = ["/priority"]
+operands = ["plain", "source", "write"]
+
+[[spec]]
+# (esentutl /y SOURCE /d DEST: copies, locked files too)
+name = ["esentutl"]
+slash_options = true
+values = ["/y", "/d"]
+operands = "plain"
+[spec.roles]
+"/y" = "source"
+"/d" = "write"
+
+[[spec]]
+name = ["expand", "xcopy", "replace", "extrac32"]
+slash_options = true
+operands = ["source*", "write"]
+
+[[spec]]
+name = ["robocopy"]
+slash_options = true
+operands = ["source", "write", "plain*"]
+
+[[spec]]
+name = ["mshta"]
+operands = ["code_source", "plain*"]
+
+[[spec]]
+# (regsvr32 /s /n /u /i:URL scrobj.dll: the scriptlet at the URL runs)
+name = ["regsvr32"]
+slash_options = true
+operands = "code_file"
+[spec.roles]
+"/i" = "code_source"
+
+[[spec]]
+name = ["rundll32"]
+operands = ["code_file", "plain*"]
+
+[[spec]]
+name = ["msiexec"]
+slash_options = true
+values = ["/i", "/package", "/a", "/x", "/uninstall", "/f", "/j", "/p", "/update", "/l", "/log", "/y"]
+operands = "plain"
+[spec.roles]
+"/i" = "code_source"
+"/package" = "code_source"
+"/a" = "code_source"
+"/j" = "code_source"
+"/p" = "code_source"
+"/update" = "code_source"
+"/y" = "code_source"
+"/x" = "code_source"
+"/uninstall" = "code_source"
+"/l" = "write"
+"/log" = "write"
+
+[[spec]]
+name = ["installutil", "regasm", "regsvcs", "msbuild", "cmstp", "odbcconf", "msxsl", "ieexec", "pcwrun",
+        "presentationhost", "msdt", "control"]
+slash_options = true
+operands = ["code_source", "plain*"]
+
+[[spec]]
+# (reg add KEY /v NAME /d DATA, reg delete KEY, reg import FILE)
+name = ["reg"]
+subcommands = true
+[spec.sub.add]
+slash_options = true
+values = ["/v", "/t", "/s", "/d"]
+operands = "reg_write"
+[spec.sub.delete]
+slash_options = true
+values = ["/v"]
+operands = "reg_delete"
+[spec.sub.import]
+operands = "code_file"
+[spec.sub.load]
+operands = ["reg_write", "read"]
+[spec.sub.restore]
+operands = ["reg_write", "read"]
+[spec.sub.copy]
+slash_options = true
+operands = ["plain", "reg_write"]
+[spec.sub.save]
+slash_options = true
+operands = ["plain", "write"]
+[spec.sub.export]
+slash_options = true
+operands = ["plain", "write"]
+[spec.sub.query]
+slash_options = true
+values = ["/v", "/f", "/t", "/se"]
+operands = "plain"
+readonly = true

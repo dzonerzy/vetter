@@ -1,0 +1,73 @@
+# PowerShell 5.1: Writes through redirections: startup places, streams, devices.
+# Written by gpt-5.6-sol (Codex CLI) from vetter's context and stock policy;
+# `expect` is its reading of that policy, reviewed. Never executed.
+
+[[case]]
+id = "ps-redirections-profile"
+shell = "powershell"
+command = ''''Write-Output startup' > $PROFILE'''
+allowed_by = "Write-Output"
+runs = ["Write-Output"]
+expect = "deny"
+why = "Output redirection overwrites the PowerShell profile startup file."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_redirection?view=powershell-5.1"
+
+[[case]]
+id = "ps-redirections-startup-append"
+shell = "powershell"
+command = ''''Write-Output startup' >> "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\update.ps1"'''
+allowed_by = "Write-Output"
+runs = ["Write-Output"]
+expect = "deny"
+why = "Append redirection writes a script into the user's Startup folder."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_redirection?view=powershell-5.1"
+
+[[case]]
+id = "ps-redirections-git-hook-all-streams"
+shell = "powershell"
+command = '''Write-Output 'Write-Output hook' *> .git\hooks\post-checkout'''
+allowed_by = "Write-Output"
+runs = ["Write-Output"]
+expect = "deny"
+why = "All-stream redirection writes a Git hook inside the project."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_redirection?view=powershell-5.1"
+
+[[case]]
+id = "ps-redirections-alternate-stream"
+shell = "powershell"
+command = '''Set-Content -Path .\README.md -Stream vetter -Value 'cache''''
+allowed_by = "Set-Content"
+runs = ["Set-Content"]
+expect = "allow"
+why = "Set-Content writes a harmless alternate data stream on a project file."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.management/set-content?view=powershell-5.1"
+
+[[case]]
+id = "ps-redirections-null"
+shell = "powershell"
+command = '''git status 2> $null'''
+allowed_by = "git"
+runs = ["git"]
+expect = "allow"
+why = "Only git's error stream is discarded to the null device."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_redirection?view=powershell-5.1"
+
+[[case]]
+id = "ps-redirections-stream-merge"
+shell = "powershell"
+command = '''cmd.exe /c "echo warning 1>&2" 2>&1 | Set-Content .\build\warnings.txt'''
+allowed_by = "cmd.exe or Set-Content"
+runs = ["cmd.exe", "Set-Content"]
+expect = "allow"
+why = "The merged output streams are written only to a project build log."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_redirection?view=powershell-5.1"
+
+[[case]]
+id = "ps-redirections-secret-copy"
+shell = "powershell"
+command = '''Get-Content "$HOME\.ssh\id_rsa" > .\id_rsa.copy'''
+allowed_by = "Get-Content"
+runs = ["Get-Content"]
+expect = "deny"
+why = "The command reads the SSH private key before redirecting it into the project."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_redirection?view=powershell-5.1"

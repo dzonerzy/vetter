@@ -1,0 +1,159 @@
+script        = lb (list (nls list)*)? lb eof_bs?
+
+# Lists, and-or lists, pipelines
+list          = and_or (sp sep sp and_or)* (sp sep)?
+compound_list = lb and_or (term_sep and_or)* (sp sep)? lb
+@silent term_sep = sp sep lb | nls
+sep           = op_semi | op_amp
+op_semi       = ';' ![;&]
+op_amp        = '&' ![&>]
+and_or        = pipeline (sp and_or_op lb pipeline)*
+and_or_op     = op_and | op_or
+op_and        = '&&'
+op_or         = '||'
+# (`time` and `!` alone are a pipeline too, before a `;`, a newline or
+# the end; `time` is a keyword only first: `a | time b`, `x=1 time b` run
+# a command named time)
+pipeline      = ((time | bang) sp)* command (sp pipe_op lb command)*
+              | (time | bang) (sp (time | bang))* &(sp (op_semi | '\n' | '#' | !.))
+time          = 'time' kw (sp '-p' kw)? (sp '--' kw)?
+bang          = '!' kw
+pipe_op       = '|&' | '|' ![|]
+
+# Commands
+command       = compound (sp redirect)* | function_def | simple
+# (`((` is arithmetic when it closes as arithmetic: before subshells)
+compound      = brace_group | arith_cmd | subshell | if_clause | while_clause | until_clause
+              | for_clause | select_clause | case_clause | cond_cmd | coproc
+# (after an assignment or a redirection, a reserved word is a name: `x= done`)
+simple        = pre (sp pre)* (sp name:cmd_name (sp arg)*)? | !reserved name:cmd_name (sp arg)*
+@silent pre   = assignment | redirect
+@silent arg   = redirect | word
+# (where an assignment may be, `name[` opens a subscript that has to close)
+cmd_name      = &(name '[') subscripted part* | !(name '[') word
+subscripted   = name '[' subscript ']'
+
+brace_group   = '{' kw compound_list '}' kw
+subshell      = '(' compound_list ')'
+if_clause     = 'if' kw cond:compound_list 'then' kw then:compound_list
+                (elif_part)* (else_part)? 'fi' kw
+elif_part     = 'elif' kw cond:compound_list 'then' kw then:compound_list
+else_part     = 'else' kw body:compound_list
+while_clause  = 'while' kw cond:compound_list do_group
+until_clause  = 'until' kw cond:compound_list do_group
+for_clause    = 'for' kw sp (for_arith (sp ';')? lb do_group | var:name for_in? lb do_group)
+select_clause = 'select' kw sp var:name for_in? lb do_group
+@silent for_in = (sp ';' | lb 'in' kw (sp item:word)* (sp ';' | nls) | sp ';')
+# (three expressions: `for ((;;))`)
+for_arith     = '((' for_expr ';' for_expr ';' for_expr '))'
+for_expr      = (expansion | '(' arith_body ')' | [^()$`;] | '$')*
+do_group      = 'do' kw body:compound_list 'done' kw
+case_clause   = 'case' kw sp subject:word lb 'in' kw lb (case_item lb)* 'esac' kw
+case_item     = !('esac' kw) ('(' sp)? pattern:word (sp '|' sp pattern:word)* sp ')'
+                body:compound_list? case_end?
+case_end      = ';;&' | ';;' | ';&'
+arith_cmd     = '((' arith_body '))'
+# [[ ]]: bash checks the expression (a unary operator takes a word, two
+# words need a binary one between); == takes a pattern (extglob allowed),
+# =~ a regex (`|` and, in parentheses, blanks allowed)
+cond_cmd      = '[[' kw lb cond_or lb ']]' kw
+cond_or       = cond_and (lb '||' lb cond_and)*
+cond_and      = cond_not (lb '&&' lb cond_not)*
+cond_not      = '!' kw sp cond_not | '(' lb cond_or lb ')' | cond_prim
+cond_prim     = cond_unary kw sp cond_word
+              | !(cond_unary kw) cond_word sp '=~' kw sp cond_regex
+              | !(cond_unary kw) cond_word sp cond_compare sp cond_word
+              | !(cond_unary kw) cond_word sp cond_binary sp cond_pattern
+              | !(cond_unary kw) !('!' kw) cond_word
+cond_unary    = '-' [abcdefghknoprstuvwxzGLNORS]
+cond_binary   = ('==' | '!=' | '=' | '-eq' | '-ne' | '-lt' | '-le' | '-gt' | '-ge' | '-nt' | '-ot' | '-ef') kw
+# (< and > compare strings: a word, no pattern)
+cond_compare  = '<' | '>'
+@silent cond_word = !(']]' kw) word
+cond_pattern  = !(']]' kw) !'#' (extglob | part)+
+extglob       = [?*+@!] '(' ext_body ')'
+ext_body      = ('(' ext_body ')' | sq | dq | '\\' . | expansion | [^()'"\\$`] | '$')*
+cond_regex    = !(']]' kw) (regex_group | sq | ansi | locale | dq | escape | expansion
+                             | [^ \t\n'"\\$`()<>&;] | '$')+
+regex_group   = '(' (regex_group | sq | dq | '\\' . | expansion | [^()'"\\$`] | '$')* ')'
+coproc        = 'coproc' kw sp (name sp &compound_start)? command
+@silent compound_start = '{' | '(' | 'if' kw | 'while' kw | 'until' kw | 'for' kw | 'case' kw
+function_def  = 'function' kw sp fname:func_name (sp '(' sp ')')? lb body:compound (sp redirect)*
+              | fname:func_name sp '(' sp ')' lb body:compound (sp redirect)*
+func_name     = !reserved [^ \t\n;&|<>()$`"'\\]+
+
+# (kw after each: a PEG choice that matched 'do' in "done" isn't tried again)
+@silent reserved = 'if' kw | 'then' kw | 'elif' kw | 'else' kw | 'fi' kw | 'do' kw | 'done' kw
+                 | 'case' kw | 'esac' kw | 'in' kw | 'while' kw | 'until' kw | 'for' kw | 'select' kw
+                 | 'function' kw | 'coproc' kw
+                 | '{' kw | '}' kw | '!' kw | '[[' kw | ']]' kw
+# (`<(` and `>(` go on the word: `then<(x)` isn't `then`; a `\`-newline is
+# gone before bash reads words, and so is a `\` ending the text: `}\` is `}`)
+@silent kw    = &('\\\n'* ([ \t\n;&|()] | [<>] !'(' | '\\'? !.))
+
+# Assignments and redirections
+assignment    = var:name ('[' index:subscript ']')? op:assign_op (array | value:word)?
+assign_op     = '+=' | '='
+array         = '(' lb (word lb)* ')'
+subscript     = (expansion | sq | dq | '\\' . | '[' subscript ']' | [^\[\]$`'"\\])*
+# (digits or {name} before a < or > are an fd, a target only of >& and <&:
+# `>&1<f` is right, `>2>f` wrong)
+redirect      = heredoc
+              | (fd:io_number | fd:io_var)? op:dup_op sp (target:fd_target | target:word)
+              | (fd:io_number | fd:io_var)? op:redir_op sp !io_number !io_var target:word
+dup_op        = '>&' | '<&'
+fd_target     = [0-9]+ &[<>]
+heredoc       = (fd:io_number | fd:io_var)? op:heredoc_op sp !io_number !io_var delim:word
+heredoc_op    = '<<-' | '<<' !'<'
+redir_op      = '<<<' | '<>' | '<&' | '<' | '>>' | '>|' | '>&' | '>' | '&>>' | '&>'
+io_number     = [0-9]+ &[<>]
+io_var        = '{' name '}' &[<>]
+name          = [A-Za-z_] [A-Za-z0-9_]*
+
+# Words
+word          = !'#' part+ eof_bs?
+@silent part  = sq | ansi | locale | dq | escape | linecont | expansion | procsub | lit | dollar
+sq            = '\'' [^']* '\''
+ansi          = '$\'' ('\\' . | [^'\\])* '\''
+locale        = '$"' dq_part* '"'
+dq            = '"' dq_part* '"'
+@silent dq_part = dq_escape | expansion | dq_text | dq_dollar
+dq_escape     = '\\' .
+dq_text       = [^"\\$`]+
+escape        = '\\' [^\n]
+# (a backslash ending the text: dropped, as bash does; alone it's no word:
+# `echo \` is `echo`, `<\` has no target)
+@silent eof_bs = '\\' !.
+@silent linecont = '\\\n'
+lit           = [^ \t\n;&|<>()$`"'\\]+
+# (a `$(`, `${` or `$[` is an expansion, or the command is wrong; out of
+# double quotes `$'` and `$"` are quotes, even unclosed: `$'\'` isn't `$` '\')
+dollar        = '$' ![({['"]
+dq_dollar     = '$' ![({[]
+
+# A here-document's body with an unquoted delimiter: expanded like double
+# quotes, with `"` plain
+heredoc_body  = (hd_escape | expansion | hd_text | dq_dollar)*
+hd_escape     = '\\' (. | !.)
+hd_text       = [^$`\\]+
+
+@silent expansion = arith_sub | arith_old | cmdsub | param | backtick
+param         = '${' param_body '}' | '$' (name | [0-9] | [@*#?$!\-])
+param_body    = (sq | dq | '\\' . | expansion | [^}'"\\$`])*
+cmdsub        = '$(' lb ')'
+              | '$(' !'(' compound_list ')'
+              | '$(' &('(' lb !arith_close) compound_list ')'
+@silent arith_close = arith_body '))'
+arith_sub     = '$((' arith_body '))'
+# (the old $[...])
+arith_old     = '$[' (expansion | '[' arith_old_body ']' | [^\[\]$`] | '$')* ']'
+arith_old_body = (expansion | '[' arith_old_body ']' | [^\[\]$`] | '$')*
+arith_body    = (expansion | '(' arith_body ')' | [^()$`] | '$')*
+backtick      = '`' ('\\' . | [^`\\])* '`'
+procsub       = [<>] '(' (compound_list | lb) ')'
+
+# Blanks, comments, newlines
+@silent sp    = ([ \t] | '\\\n')*
+@silent comment = '#' [^\n]*
+@silent nls   = (sp comment? '\n')+ sp
+@silent lb    = (sp comment? '\n')* sp comment?

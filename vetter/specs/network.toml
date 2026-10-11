@@ -1,0 +1,110 @@
+# Programs that talk to the network
+[[spec]]
+name = ["curl"]
+values = ["-o", "--output", "-O", "-d", "--data", "--data-binary", "--data-raw", "--data-urlencode",
+          "--data-ascii", "-F", "--form", "-T", "--upload-file", "-H", "--header", "-u", "--user", "-X",
+          "--request", "-K", "--config", "-b", "--cookie", "-c", "--cookie-jar", "-D", "--dump-header",
+          "-e", "--referer", "-A", "--user-agent", "-x", "--proxy", "--url", "-m", "--max-time",
+          "--connect-timeout", "-w", "--write-out", "--retry", "-r", "--range", "--cacert", "--cert", "--key",
+          "--output-dir", "--trace", "--trace-ascii", "--stderr", "--json", "-Y", "-y", "-z", "--time-cond"]
+operands = "url"
+[spec.roles]
+"-o" = "write"
+"--output" = "write"
+"--output-dir" = "write"
+"-c" = "write"
+"--cookie-jar" = "write"
+"-D" = "write"
+"--dump-header" = "write"
+"--trace" = "write"
+"--trace-ascii" = "write"
+"--stderr" = "write"
+"-T" = "read"
+"--upload-file" = "read"
+"-K" = "read"
+"--config" = "read"
+"--url" = "url"
+"-d" = "curl_data"
+"--data" = "curl_data"
+"--data-binary" = "curl_data"
+"--data-urlencode" = "curl_data"
+"--data-ascii" = "curl_data"
+"--json" = "curl_data"
+"-F" = "curl_data"
+"--form" = "curl_data"
+
+[[spec]]
+name = ["wget"]
+values = ["-O", "--output-document", "-o", "--output-file", "-a", "--append-output", "-P", "--directory-prefix",
+          "-i", "--input-file", "--post-data", "--post-file", "--body-data", "--body-file", "-e", "--execute",
+          "-U", "--user-agent", "--header", "--user", "--password", "-t", "--tries", "-T", "--timeout",
+          "--load-cookies", "--save-cookies", "--method", "--use-askpass"]
+operands = "url"
+[spec.roles]
+"-O" = "write"
+"--output-document" = "write"
+"-o" = "write"
+"--output-file" = "write"
+"-a" = "write"
+"--append-output" = "write"
+"-P" = "write"
+"--directory-prefix" = "write"
+"-i" = "read"
+"--input-file" = "read"
+"--post-file" = "read"
+"--body-file" = "read"
+"--save-cookies" = "write"
+"--use-askpass" = "program"
+"-e" = "wgetrc_command"
+"--execute" = "wgetrc_command"
+
+[[spec]]
+name = ["ssh"]
+values = ["-b", "-c", "-D", "-E", "-e", "-F", "-I", "-i", "-J", "-L", "-l", "-m", "-O", "-o", "-p", "-Q",
+          "-R", "-S", "-W", "-w", "-B", "-P"]
+stop_at_operand = true
+operands = ["url", "remote_command*"]
+[spec.roles]
+"-F" = "code_file"
+"-o" = "ssh_option"
+"-E" = "write"
+"-i" = "read"
+
+[[spec]]
+name = ["scp", "sftp"]
+values = ["-c", "-F", "-i", "-J", "-l", "-o", "-P", "-S", "-D", "-X", "-b"]
+operands = ["read*", "write"]
+[spec.roles]
+"-S" = "program"
+"-F" = "code_file"
+"-o" = "ssh_option"
+"-D" = "program"
+"-b" = "read"
+
+[[spec]]
+name = ["rsync"]
+values = ["-e", "--rsh", "--rsync-path", "--exclude", "--include", "--exclude-from", "--include-from",
+          "--files-from", "-f", "--filter", "--log-file", "--password-file", "-T", "--temp-dir", "--chmod",
+          "--chown", "--partial-dir", "--backup-dir", "--suffix", "--compare-dest", "--copy-dest", "--link-dest",
+          "--bwlimit", "--timeout", "--port", "--out-format", "--iconv", "-M", "--remote-option"]
+operands = ["read*", "write"]
+[spec.roles]
+"-e" = "cmdline"
+"--rsh" = "cmdline"
+"--rsync-path" = "remote_command"
+"--log-file" = "write"
+"--exclude-from" = "read"
+"--include-from" = "read"
+"--files-from" = "read"
+"--password-file" = "read"
+
+[[spec]]
+name = ["nc", "ncat", "netcat", "socat", "telnet"]
+values = ["-e", "-c", "--exec", "--sh-exec", "--lua-exec", "-p", "-s", "-w", "-i", "-q", "-x", "-X", "-I", "-O"]
+operands = "url"
+[spec.roles]
+"-e" = "program"
+"--exec" = "program"
+"-c" = "shell"
+"--sh-exec" = "shell"
+"--lua-exec" = "code_file"

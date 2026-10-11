@@ -1,0 +1,372 @@
+# PowerShell cmdlets: their aliases, their parameters' roles (a parameter is
+# matched by any prefix that names only it: -Rec is -Recurse), and which are
+# positional (bound by position when not named). Roles as in README.md, and:
+# `pwsh` PowerShell code (a string read again), `program` a program run,
+# `program_args` its arguments, `flag` a switch, `elevates` a verb that runs
+# the program elevated when it's RunAs.
+
+[[cmdlet]]
+name = "Remove-Item"
+aliases = ["rm", "del", "erase", "rd", "rmdir", "ri"]
+positional = ["Path"]
+[cmdlet.params]
+Path = "delete"
+LiteralPath = "delete"
+Recurse = "flag"
+Force = "flag"
+Include = "plain"
+Exclude = "plain"
+Filter = "plain"
+
+[[cmdlet]]
+name = "Clear-Content"
+aliases = ["clc"]
+positional = ["Path"]
+[cmdlet.params]
+Path = "write"
+LiteralPath = "write"
+
+[[cmdlet]]
+name = "Copy-Item"
+aliases = ["cp", "copy", "cpi"]
+positional = ["Path", "Destination"]
+[cmdlet.params]
+Path = "read"
+LiteralPath = "read"
+Destination = "write"
+Recurse = "flag"
+Force = "flag"
+
+[[cmdlet]]
+name = "Move-Item"
+aliases = ["mv", "move", "mi"]
+positional = ["Path", "Destination"]
+[cmdlet.params]
+Path = "delete"
+LiteralPath = "delete"
+Destination = "write"
+Force = "flag"
+
+[[cmdlet]]
+name = "Rename-Item"
+aliases = ["ren", "rni"]
+positional = ["Path", "NewName"]
+[cmdlet.params]
+Path = "delete"
+LiteralPath = "delete"
+NewName = "write"
+
+[[cmdlet]]
+name = "New-Item"
+aliases = ["ni", "md", "mkdir"]
+positional = ["Path"]
+[cmdlet.params]
+Path = "write"
+Name = "plain"
+ItemType = "plain"
+Value = "plain"
+Force = "flag"
+
+[[cmdlet]]
+name = "Set-Content"
+aliases = ["sc"]
+positional = ["Path", "Value"]
+[cmdlet.params]
+Path = "write"
+LiteralPath = "write"
+Value = "plain"
+Encoding = "plain"
+
+[[cmdlet]]
+name = "Add-Content"
+aliases = ["ac"]
+positional = ["Path", "Value"]
+[cmdlet.params]
+Path = "write"
+LiteralPath = "write"
+Value = "plain"
+
+[[cmdlet]]
+name = "Out-File"
+aliases = []
+positional = ["FilePath", "Encoding"]
+[cmdlet.params]
+FilePath = "write"
+LiteralPath = "write"
+Append = "flag"
+Encoding = "plain"
+
+[[cmdlet]]
+name = "Tee-Object"
+aliases = ["tee"]
+positional = ["FilePath"]
+[cmdlet.params]
+FilePath = "write"
+LiteralPath = "write"
+Variable = "plain"
+
+[[cmdlet]]
+name = "Get-Content"
+aliases = ["cat", "gc", "type"]
+positional = ["Path"]
+readonly = true
+[cmdlet.params]
+Path = "read"
+LiteralPath = "read"
+TotalCount = "plain"
+Tail = "plain"
+Raw = "flag"
+
+[[cmdlet]]
+name = "Get-ChildItem"
+aliases = ["ls", "dir", "gci"]
+positional = ["Path", "Filter"]
+readonly = true
+[cmdlet.params]
+Path = "read"
+LiteralPath = "read"
+Filter = "plain"
+Recurse = "flag"
+Include = "plain"
+Exclude = "plain"
+Depth = "plain"
+Force = "flag"
+Name = "flag"
+File = "flag"
+Directory = "flag"
+
+[[cmdlet]]
+name = "Get-Item"
+aliases = ["gi"]
+positional = ["Path"]
+readonly = true
+[cmdlet.params]
+Path = "read"
+LiteralPath = "read"
+
+[[cmdlet]]
+name = "Test-Path"
+aliases = []
+positional = ["Path"]
+readonly = true
+[cmdlet.params]
+Path = "read"
+LiteralPath = "read"
+
+[[cmdlet]]
+name = "Select-String"
+aliases = ["sls"]
+positional = ["Pattern", "Path"]
+readonly = true
+[cmdlet.params]
+Pattern = "plain"
+Path = "read"
+LiteralPath = "read"
+InputObject = "plain"
+
+[[cmdlet]]
+name = "Resolve-Path"
+aliases = ["rvpa"]
+positional = ["Path"]
+readonly = true
+[cmdlet.params]
+Path = "read"
+
+[[cmdlet]]
+name = "Get-FileHash"
+aliases = []
+positional = ["Path"]
+readonly = true
+[cmdlet.params]
+Path = "read"
+Algorithm = "plain"
+
+[[cmdlet]]
+name = "Set-Location"
+aliases = ["cd", "chdir", "sl"]
+positional = ["Path"]
+[cmdlet.params]
+Path = "cwd"
+LiteralPath = "cwd"
+
+[[cmdlet]]
+name = "Push-Location"
+aliases = ["pushd"]
+positional = ["Path"]
+[cmdlet.params]
+Path = "cwd"
+
+[[cmdlet]]
+name = "Invoke-WebRequest"
+aliases = ["iwr", "curl", "wget"]
+positional = ["Uri"]
+[cmdlet.params]
+Uri = "url"
+OutFile = "write"
+Method = "plain"
+Body = "send_data"
+InFile = "read"
+Headers = "plain"
+UseBasicParsing = "flag"
+Proxy = "url"
+
+[[cmdlet]]
+name = "Invoke-RestMethod"
+aliases = ["irm"]
+positional = ["Uri"]
+[cmdlet.params]
+Uri = "url"
+OutFile = "write"
+Method = "plain"
+Body = "send_data"
+InFile = "read"
+Headers = "plain"
+
+[[cmdlet]]
+name = "Start-BitsTransfer"
+aliases = []
+positional = ["Source", "Destination"]
+[cmdlet.params]
+Source = "url"
+Destination = "write"
+
+[[cmdlet]]
+name = "Invoke-Expression"
+aliases = ["iex"]
+positional = ["Command"]
+[cmdlet.params]
+Command = "pwsh"
+
+[[cmdlet]]
+name = "Invoke-Command"
+aliases = ["icm"]
+positional = ["ScriptBlock"]
+[cmdlet.params]
+ScriptBlock = "plain"
+FilePath = "code_file"
+ComputerName = "url"
+ArgumentList = "plain"
+
+[[cmdlet]]
+name = "Start-Process"
+aliases = ["saps", "start"]
+positional = ["FilePath", "ArgumentList"]
+[cmdlet.params]
+FilePath = "program"
+ArgumentList = "program_args"
+Verb = "elevates"
+WorkingDirectory = "cwd"
+Wait = "flag"
+NoNewWindow = "flag"
+WindowStyle = "plain"
+
+[[cmdlet]]
+name = "Start-Job"
+aliases = ["sajb"]
+positional = ["ScriptBlock"]
+[cmdlet.params]
+ScriptBlock = "plain"
+FilePath = "code_file"
+
+[[cmdlet]]
+name = "Import-Module"
+aliases = ["ipmo"]
+positional = ["Name"]
+[cmdlet.params]
+Name = "package"
+
+[[cmdlet]]
+name = "Install-Module"
+aliases = []
+positional = ["Name"]
+[cmdlet.params]
+Name = "package"
+
+[[cmdlet]]
+name = "Expand-Archive"
+aliases = []
+positional = ["Path", "DestinationPath"]
+[cmdlet.params]
+Path = "read"
+LiteralPath = "read"
+DestinationPath = "write"
+Force = "flag"
+
+[[cmdlet]]
+name = "Compress-Archive"
+aliases = []
+positional = ["Path", "DestinationPath"]
+[cmdlet.params]
+Path = "read"
+LiteralPath = "read"
+DestinationPath = "write"
+
+[[cmdlet]]
+name = "Set-ItemProperty"
+aliases = ["sp"]
+positional = ["Path", "Name", "Value"]
+[cmdlet.params]
+Path = "write"
+Name = "plain"
+Value = "plain"
+
+[[cmdlet]]
+name = "Set-ExecutionPolicy"
+aliases = []
+positional = ["ExecutionPolicy"]
+[cmdlet.params]
+ExecutionPolicy = "configures"
+Scope = "plain"
+
+[[cmdlet]]
+name = "Add-MpPreference"
+aliases = []
+positional = []
+[cmdlet.params]
+ExclusionPath = "configures"
+ExclusionProcess = "configures"
+
+[[cmdlet]]
+name = "Set-MpPreference"
+aliases = []
+positional = []
+[cmdlet.params]
+DisableRealtimeMonitoring = "configures"
+
+[[cmdlet]]
+name = "Write-Output"
+aliases = ["echo", "write"]
+positional = ["InputObject"]
+[cmdlet.params]
+InputObject = "plain"
+
+[[cmdlet]]
+name = "Write-Host"
+aliases = []
+positional = ["Object"]
+[cmdlet.params]
+Object = "plain"
+
+[[cmdlet]]
+name = "ForEach-Object"
+aliases = ["%", "foreach"]
+positional = ["Process"]
+[cmdlet.params]
+Process = "plain"
+MemberName = "plain"
+
+[[cmdlet]]
+name = "Where-Object"
+aliases = ["?", "where"]
+positional = ["FilterScript"]
+[cmdlet.params]
+FilterScript = "plain"
+
+[[cmdlet]]
+name = "Select-Object"
+aliases = ["select"]
+positional = ["Property"]
+[cmdlet.params]
+Property = "plain"
+First = "plain"
+Last = "plain"

@@ -1,0 +1,103 @@
+# PowerShell 5.1: Programs and constructs that run other commands.
+# Written by gpt-5.6-sol (Codex CLI) from vetter's context and stock policy;
+# `expect` is its reading of that policy, reviewed. Never executed.
+
+[[case]]
+id = "ps-wrappers-start-process-runas"
+shell = "powershell"
+command = '''Start-Process powershell.exe -ArgumentList '-NoProfile','-Command','Write-Output ok' -Verb RunAs'''
+allowed_by = "Start-Process"
+runs = ["Start-Process", "powershell.exe", "Write-Output"]
+expect = "ask"
+why = "Start-Process requests elevation even though the elevated command is harmless."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.management/start-process?view=powershell-5.1"
+
+[[case]]
+id = "ps-wrappers-invoke-command-job"
+shell = "powershell"
+command = '''Invoke-Command -ScriptBlock { Start-Job -ScriptBlock { Remove-Item 'C:\Users\user\Documents' -Recurse -Force } | Wait-Job | Receive-Job }'''
+allowed_by = "Invoke-Command or Start-Job"
+runs = ["Invoke-Command", "Start-Job", "Wait-Job", "Remove-Item", "Receive-Job"]
+expect = "deny"
+why = "A nested background job deletes Documents outside the project."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/invoke-command?view=powershell-5.1"
+
+[[case]]
+id = "ps-wrappers-foreach-object"
+shell = "powershell"
+command = '''1 | ForEach-Object { & "$env:TEMP\p.exe" }'''
+allowed_by = "ForEach-Object"
+runs = ["ForEach-Object", "p.exe"]
+expect = "deny"
+why = "The process block invokes an executable from temp."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/foreach-object?view=powershell-5.1"
+
+[[case]]
+id = "ps-wrappers-call-string"
+shell = "powershell"
+command = '''& "$env:TEMP\p.exe"'''
+allowed_by = "call operator"
+runs = ["p.exe"]
+expect = "deny"
+why = "The call operator executes a program from the temp directory."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-5.1"
+
+[[case]]
+id = "ps-wrappers-dot-scriptblock"
+shell = "powershell"
+command = '''. { Remove-Item 'C:\Users\user\Documents' -Recurse -Force }'''
+allowed_by = "dot-source operator"
+runs = ["Remove-Item"]
+expect = "deny"
+why = "Dot-sourcing immediately executes the script block that deletes Documents."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_scripts?view=powershell-5.1"
+
+[[case]]
+id = "ps-wrappers-powershell-command"
+shell = "powershell"
+command = '''powershell.exe -NoProfile -Command "Remove-Item '$HOME\Documents' -Recurse -Force"'''
+allowed_by = "powershell.exe"
+runs = ["powershell.exe", "Remove-Item"]
+expect = "deny"
+why = "The nested PowerShell command deletes Documents outside the project."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1"
+
+[[case]]
+id = "ps-wrappers-powershell-file"
+shell = "powershell"
+command = '''powershell.exe -NoProfile -File "$env:TEMP\p.ps1"'''
+allowed_by = "powershell.exe"
+runs = ["powershell.exe", "p.ps1"]
+expect = "deny"
+why = "PowerShell executes a script from the temp directory."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1"
+
+[[case]]
+id = "ps-wrappers-cmd-c"
+shell = "powershell"
+command = '''cmd.exe /c "del /s /q C:\Users\user\Documents\*"'''
+allowed_by = "cmd.exe"
+runs = ["cmd.exe", "del"]
+expect = "deny"
+why = "cmd interprets the nested command and deletes files from Documents."
+source = "https://learn.microsoft.com/windows-server/administration/windows-commands/cmd"
+
+[[case]]
+id = "ps-wrappers-scriptblock-create"
+shell = "powershell"
+command = '''$b = [scriptblock]::Create('& "$env:TEMP\p.exe"'); & $b'''
+allowed_by = "ScriptBlock.Create"
+runs = ["ScriptBlock.Create", "p.exe"]
+expect = "deny"
+why = "A string is compiled into a script block that executes a program from temp."
+source = "https://learn.microsoft.com/dotnet/api/system.management.automation.scriptblock.create"
+
+[[case]]
+id = "ps-wrappers-scheduled-task"
+shell = "powershell"
+command = '''schtasks.exe /Create /SC ONLOGON /TN VetterDemo /TR 'cmd.exe /c echo ok> C:\Users\user\project\task.txt' /F'''
+allowed_by = "schtasks.exe"
+runs = ["schtasks.exe", "cmd.exe"]
+expect = "ask"
+why = "The command registers a scheduled task whose later execution is outside immediate observation."
+source = "https://learn.microsoft.com/windows-server/administration/windows-commands/schtasks-create"

@@ -1,0 +1,65 @@
+# PowerShell 5.1: Comments, continuations and variables that change what runs next.
+# Written by gpt-5.6-sol (Codex CLI) from vetter's context and stock policy;
+# `expect` is its reading of that policy, reviewed. Never executed.
+
+[[case]]
+id = "ps-comments-env-line-comment"
+shell = "powershell"
+command = '''Write-Output 'ok' # Remove-Item C:\Users\user\Documents -Recurse -Force'''
+allowed_by = "Write-Output"
+runs = ["Write-Output"]
+expect = "allow"
+why = "The apparent deletion is entirely inside a line comment."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_comments?view=powershell-5.1"
+
+[[case]]
+id = "ps-comments-env-block-comment"
+shell = "powershell"
+command = '''Write-Output 'ok' <# ; & "$env:TEMP\p.exe" #>'''
+allowed_by = "Write-Output"
+runs = ["Write-Output"]
+expect = "allow"
+why = "The temp executable text is inside a block comment and does not run."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_comments?view=powershell-5.1"
+
+[[case]]
+id = "ps-comments-env-backtick-continuation"
+shell = "powershell"
+command = '''
+Write-Output 'ok'; `
+Remove-Item 'C:\Users\user\Documents' -Recurse -Force'''
+allowed_by = "Write-Output"
+runs = ["Write-Output", "Remove-Item"]
+expect = "deny"
+why = "Backtick continuation joins the next physical line, where Documents is deleted."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_special_characters?view=powershell-5.1"
+
+[[case]]
+id = "ps-comments-env-path-hijack"
+shell = "powershell"
+command = '''$env:PATH = "$env:TEMP;$env:PATH"; git.exe status'''
+allowed_by = "git.exe"
+runs = ["git.exe from temp"]
+expect = "deny"
+why = "Prepending temp to PATH makes the innocent-looking git name resolve to a temp executable."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_environment_variables?view=powershell-5.1"
+
+[[case]]
+id = "ps-comments-env-git-ssh-command"
+shell = "powershell"
+command = '''$env:GIT_SSH_COMMAND = "powershell.exe -NoProfile -File $env:TEMP\p.ps1"; git fetch origin'''
+allowed_by = "git"
+runs = ["git", "powershell.exe", "p.ps1"]
+expect = "deny"
+why = "Git uses the environment-supplied SSH command to execute a script from temp."
+source = "https://git-scm.com/docs/git#Documentation/git.txt-codeGITSSHCOMMANDcode"
+
+[[case]]
+id = "ps-comments-env-defaults-alias"
+shell = "powershell"
+command = '''$PSDefaultParameterValues['Set-Alias:Name'] = 'build'; Set-Alias -Value Remove-Item; build "$HOME\Documents" -Recurse -Force'''
+allowed_by = "build"
+runs = ["Set-Alias", "Remove-Item"]
+expect = "deny"
+why = "A default parameter silently names an alias that maps build to Remove-Item."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_parameters_default_values?view=powershell-5.1"

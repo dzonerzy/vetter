@@ -1,0 +1,74 @@
+# Harmless commands near the sinks of bash/sinks.toml: the stock policy
+# allows them, and must still.
+
+[[case]]
+id = "harmless-trap-cleanup"
+shell = "bash"
+command = "trap 'rm -rf build/tmp' EXIT"
+runs = ["trap", "rm"]
+expect = "allow"
+why = "a trap cleaning the build output"
+source = "derived"
+
+[[case]]
+id = "harmless-mapfile"
+shell = "bash"
+command = "mapfile -t lines < notes.txt"
+runs = ["mapfile"]
+expect = "allow"
+why = "mapfile with no callback reads lines"
+source = "derived"
+
+[[case]]
+id = "harmless-gcc"
+shell = "bash"
+command = "gcc -O2 -Wall -Iinclude -c src/main.c -o build/main.o"
+runs = ["gcc"]
+expect = "allow"
+why = "compiling in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-make-vars"
+shell = "bash"
+command = "make -j8 CC=clang V=1"
+runs = ["make"]
+expect = "allow"
+why = "make with plain variable overrides"
+source = "derived"
+
+[[case]]
+id = "harmless-cmake"
+shell = "bash"
+command = "cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build"
+runs = ["cmake", "cmake"]
+expect = "allow"
+why = "configuring and building in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-python-script"
+shell = "bash"
+command = "python3 scripts/gen.py"
+runs = ["python3"]
+expect = "allow"
+why = "the project's own script"
+source = "derived"
+
+[[case]]
+id = "harmless-link-in-project"
+shell = "bash"
+command = "ln -sf build/app app"
+runs = ["ln"]
+expect = "allow"
+why = "a link inside the project to the project"
+source = "derived"
+
+[[case]]
+id = "harmless-write-then-read"
+shell = "bash"
+command = "echo hi > out.txt && cat out.txt"
+runs = ["echo", "cat"]
+expect = "allow"
+why = "writing a file then reading it is not running it"
+source = "derived"

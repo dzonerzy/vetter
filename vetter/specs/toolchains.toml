@@ -1,0 +1,64 @@
+# Compilers and runtimes: the options with which they run a program, load
+# code, or write where they're told (gcc -wrapper, -B, -fplugin; rustc -C
+# linker; java -javaagent). The policy's "language tools" allow them; what
+# these options do is decided on its own.
+
+# The C and C++ drivers (gcc's options; clang takes them too)
+[[spec]]
+name = ["gcc", "g++", "cc", "c++", "clang", "clang++", "cpp"]
+values = ["-o", "-x", "-I", "-L", "-D", "-U", "-include", "-imacros", "-isystem", "-iquote", "-idirafter", "-MF", "-MT",
+          "-MQ", "-wrapper", "-B", "-specs", "--specs", "-fplugin", "-fpass-plugin", "-fuse-ld", "-T", "--sysroot",
+          "-target", "--target", "-Xlinker", "-Xassembler", "-Xpreprocessor", "-Xclang", "-arch", "-e", "-u"]
+single_dash_long = true
+attached = ["-o", "-B", "-MF"]
+response_files = true
+# (its sources: what it builds from)
+operands = "read"
+[spec.roles]
+"-o" = "write"
+"-MF" = "write"
+"-include" = "read"
+"-imacros" = "read"
+"-wrapper" = "comma_program"
+"-B" = "program_dir"
+"-specs" = "code_file"
+"--specs" = "code_file"
+"-fplugin" = "code_file"
+"-fpass-plugin" = "code_file"
+"-fuse-ld" = "linker"
+
+[[spec]]
+name = ["cmake"]
+values = ["-S", "-B", "-D", "-U", "-G", "-T", "-A", "-C", "-P", "--build", "--install", "--preset", "--toolchain",
+          "--graphviz", "-j", "--parallel", "--target", "--config", "--prefix", "--component"]
+attached = ["-D", "-S", "-B", "-G", "-C"]
+[spec.roles]
+"-P" = "code_file"
+"-C" = "code_file"
+"--toolchain" = "code_file"
+"--build" = "cwd"
+
+[[spec]]
+name = ["rustc"]
+values = ["-C", "--codegen", "-o", "--out-dir", "-L", "-l", "--extern", "--crate-type", "--crate-name", "--edition",
+          "-Z", "--target", "--cfg", "--emit", "--sysroot"]
+attached = ["-C", "-o", "-L", "-l", "-Z"]
+response_files = true
+operands = "read"
+[spec.roles]
+"-C" = "rustc_codegen"
+"--codegen" = "rustc_codegen"
+"-o" = "write"
+"-Z" = "configured"
+
+[[spec]]
+name = ["java", "javaw"]
+values = ["-cp", "-classpath", "--class-path", "-p", "--module-path", "-m", "--module", "-jar"]
+single_dash_long = true
+stop_at_operand = true
+attached = ["-javaagent:", "-agentpath:"]
+response_files = true
+[spec.roles]
+"-javaagent:" = "agent_file"
+"-agentpath:" = "agent_file"
+"-jar" = "code_file"

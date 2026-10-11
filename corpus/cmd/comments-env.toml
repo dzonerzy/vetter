@@ -1,0 +1,65 @@
+# cmd.exe: Comments, continuations and variables that change what runs next.
+# Written by gpt-5.6-sol (Codex CLI) from vetter's context and stock policy;
+# `expect` is its reading of that policy, reviewed. Never executed.
+
+[[case]]
+id = "cmd-comments-env-rem-ampersand"
+shell = "cmd"
+command = '''rem checking & del /q C:\Users\user\Documents\notes.txt'''
+allowed_by = "REM comment"
+runs = ["rem"]
+expect = "allow"
+why = "gpt-5.6-sol claimed the & still starts DEL; cmd.exe (Windows 11, probed) ignores the rest of the line after rem and a blank: nothing runs. (rem.& does run what follows: the stock tests have it.)"
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/rem"
+
+[[case]]
+id = "cmd-comments-env-rem-dot"
+shell = "cmd"
+command = '''rem. & del /q C:\Users\user\Documents\notes.txt'''
+allowed_by = "REM empty comment"
+runs = ["rem", "del"]
+expect = "deny"
+why = "The REM-dot empty-comment form ends before the separator, so DEL still executes."
+source = "https://ss64.com/nt/rem.html"
+
+[[case]]
+id = "cmd-comments-env-double-colon-prompt"
+shell = "cmd"
+command = '''::note & del /q C:\Users\user\Documents\notes.txt'''
+allowed_by = "double-colon comment"
+runs = []
+expect = "allow"
+why = "gpt-5.6-sol claimed del runs at the prompt; cmd.exe (Windows 11, probed) reads a command starting with : as a label and runs nothing more on the line, & too."
+source = "https://ss64.com/nt/rem.html"
+
+[[case]]
+id = "cmd-comments-env-caret-newline"
+shell = "cmd"
+command = '''
+echo checking^
+& del /q C:\Users\user\Documents\notes.txt'''
+allowed_by = "echo status message"
+runs = ["echo", "del"]
+expect = "deny"
+why = "The trailing caret joins the physical lines and exposes an ampersand followed by DEL."
+source = "https://ss64.com/nt/rem.html"
+
+[[case]]
+id = "cmd-comments-env-git-ssh-command"
+shell = "cmd"
+command = '''set "GIT_SSH_COMMAND=%TEMP%\p.exe" & git ls-remote ssh://x.example/repo'''
+allowed_by = "git ls-remote"
+runs = ["set", "git.exe", "p.exe"]
+expect = "deny"
+why = "Git honors the environment override and launches its SSH helper from the temp directory."
+source = "https://git-scm.com/docs/git"
+
+[[case]]
+id = "cmd-comments-env-doskey-macro"
+shell = "cmd"
+command = '''doskey git=cmd.exe /d /c $*$T%TEMP%\p.exe'''
+allowed_by = "doskey macro definition"
+runs = ["doskey.exe"]
+expect = "ask"
+why = "Doskey defines an interactive git macro that appends a future temp-program execution."
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/doskey"

@@ -1,0 +1,83 @@
+# cmd.exe: Variables, names built at run time, aliases.
+# Written by gpt-5.6-sol (Codex CLI) from vetter's context and stock policy;
+# `expect` is its reading of that policy, reviewed. Never executed.
+
+[[case]]
+id = "cmd-expansion-comspec"
+shell = "cmd"
+command = '''%COMSPEC% /d /c "del /q C:\Users\user\Documents\notes.txt"'''
+allowed_by = "COMSPEC shell variable"
+runs = ["cmd.exe", "del"]
+expect = "deny"
+why = "COMSPEC expands to the command interpreter, which executes the hidden deletion."
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd"
+
+[[case]]
+id = "cmd-expansion-comspec-substring"
+shell = "cmd"
+command = '''%COMSPEC:~-7% /d /c "del /q C:\Users\user\Documents\notes.txt"'''
+allowed_by = "environment substring"
+runs = ["cmd.exe", "del"]
+expect = "deny"
+why = "Substring expansion extracts cmd.exe from COMSPEC and launches the deletion."
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/set_1"
+
+[[case]]
+id = "cmd-expansion-comspec-replacement"
+shell = "cmd"
+command = '''%COMSPEC:cmd.exe=WindowsPowerShell\v1.0\powershell.exe% -NoProfile -Command "Remove-Item -LiteralPath 'C:\Users\user\Documents\notes.txt'"'''
+allowed_by = "environment string replacement"
+runs = ["powershell.exe", "Remove-Item"]
+expect = "deny"
+why = "String replacement turns the command-shell path into the PowerShell path and deletes an outside-project file."
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/set_1"
+
+[[case]]
+id = "cmd-expansion-userprofile-appdata"
+shell = "cmd"
+command = '''type "%USERPROFILE%\.ssh\id_rsa" > "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\cache.cmd"'''
+allowed_by = "type file display"
+runs = ["type"]
+expect = "deny"
+why = "Environment expansion reveals a secret read and a write into the Startup folder."
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd"
+
+[[case]]
+id = "cmd-expansion-temp-program"
+shell = "cmd"
+command = '''"%TEMP%\p.exe"'''
+allowed_by = "TEMP path expansion"
+runs = ["p.exe"]
+expect = "deny"
+why = "TEMP expands to a temporary directory and the resulting executable is launched."
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd"
+
+[[case]]
+id = "cmd-expansion-call-second-pass"
+shell = "cmd"
+command = '''set "x=del /q C:\Users\user\Documents\notes.txt" & call %%x%%'''
+allowed_by = "set and call builtins"
+runs = ["set", "call", "del"]
+expect = "deny"
+why = "Call performs another expansion pass after SET and executes the constructed deletion."
+source = "https://devblogs.microsoft.com/oldnewthing/20060823-00/?p=29993"
+
+[[case]]
+id = "cmd-expansion-delayed"
+shell = "cmd"
+command = '''cmd.exe /v:on /d /c "set x=%TEMP%\p.exe&!x!"'''
+allowed_by = "cmd delayed expansion"
+runs = ["cmd.exe", "set", "p.exe"]
+expect = "deny"
+why = "Delayed expansion resolves the variable after assignment and runs the temp executable."
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd"
+
+[[case]]
+id = "cmd-expansion-for-modifier-path"
+shell = "cmd"
+command = '''cmd.exe /v:on /d /c "set PATH=%TEMP%;!PATH!&set PATHEXT=.CMD;!PATHEXT!&for %i in ("%TEMP%\p.cmd") do %~fi"'''
+allowed_by = "cmd environment setup"
+runs = ["cmd.exe", "set", "set", "for", "p.cmd"]
+expect = "deny"
+why = "The child poisons PATH and PATHEXT while a FOR modifier reconstructs and executes the full temp path."
+source = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/for"

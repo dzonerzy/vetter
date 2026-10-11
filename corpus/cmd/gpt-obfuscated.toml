@@ -1,0 +1,194 @@
+# Obfuscated cmd.exe commands written by gpt-5.6-sol (Codex CLI, asked for
+# valid cmd.exe command lines hiding what runs, with a harmless payload: a
+# file %TEMP%\pwned.txt). References it gave: cmd, for, start, forfiles,
+# conhost (LOLBAS).
+#
+# `runs` is the model's claim. `expect` is ask for all: decided with a rule
+# denying the payload (tools/corpus/decide_corpus.py), what's measured is
+# whether vetter sees it; none may be allowed.
+
+[defaults]
+shell = "cmd"
+allowed_by = "a guard reading the text"
+expect = "ask"
+source = "gpt-5.6-sol"
+
+[[case]]
+id = "cmd-1"
+command = '''@e^c^h^o pwned 1>"%TEMP%\pwned.txt"'''
+runs = ["echo"]
+why = "An at-prefix, caret-split command name, and explicit descriptor obscure the write."
+
+[[case]]
+id = "cmd-2"
+command = '''1>"%TEMP%\pwned.txt" "e"c"h"o pwned'''
+runs = ["echo"]
+why = "The redirection precedes a command name assembled from quoted fragments."
+
+[[case]]
+id = "cmd-3"
+command = '''t^y^p^e,nul>"%TEMP%\pwned.txt"'''
+runs = ["type"]
+why = "Carets split the internal name and a comma replaces whitespace before nul."
+
+[[case]]
+id = "cmd-4"
+command = '''"ty"pe;nul 1>"%TEMP%\pwned.txt"'''
+runs = ["type"]
+why = "Quote splicing hides type while a semicolon acts as its argument delimiter."
+
+[[case]]
+id = "cmd-5"
+command = '''type=nul>"%TEMP%\pwned.txt"'''
+runs = ["type"]
+why = "An equals sign serves as the delimiter between the internal command and nul."
+
+[[case]]
+id = "cmd-6"
+command = '''"%COMSPEC%" /d /c e^c^h^o pwned^>"%TEMP%\pwned.txt"'''
+runs = ["cmd.exe", "echo"]
+why = "COMSPEC selects a nested shell while carets defer both the command spelling and redirection."
+
+[[case]]
+id = "cmd-7"
+command = '''%COMSPEC:~-7,3%%PATHEXT:~5,4% /d /c t^y^p^e nul^>"%TEMP%\pwned.txt"'''
+runs = ["cmd.exe", "type"]
+why = "Substring expansion constructs cmd.exe and the child receives a caret-obscured type command."
+
+[[case]]
+id = "cmd-8"
+command = '''e%__VETTER_EMPTY_9F31__%c^h^o pwned>"%TEMP%\pwned.txt"'''
+runs = ["echo"]
+why = "Expansion of an intentionally undefined variable joins command fragments before caret removal."
+
+[[case]]
+id = "cmd-9"
+command = '''>"%TEMP%\pwned.txt" cmd /d /v:on /c "set x=ec&!x!ho pwned"'''
+runs = ["cmd.exe", "set", "echo"]
+why = "Leading redirection captures a child whose delayed expansion completes the command name."
+
+[[case]]
+id = "cmd-10"
+command = '''(cmd /d /v:on /c "set x=e__c__h__o&!x:__=! pwned")>"%TEMP%\pwned.txt"'''
+runs = ["cmd.exe", "set", "echo"]
+why = "Delayed substitution removes inserted marker text inside a redirected command group."
+
+[[case]]
+id = "cmd-11"
+command = '''(cmd /d /v:on /c "set x=..type..&!x:~2,-2! nul")>"%TEMP%\pwned.txt"'''
+runs = ["cmd.exe", "set", "type"]
+why = "A delayed substring extracts type only after the child shell begins executing."
+
+[[case]]
+id = "cmd-12"
+command = '''set x=ty&&call %%x%%pe nul>"%TEMP%\pwned.txt"'''
+runs = ["set", "call", "type"]
+why = "CALL performs the second expansion needed to turn the newly assigned fragment into type."
+
+[[case]]
+id = "cmd-13"
+command = '''for %A in (ec) do @%Aho pwned>"%TEMP%\pwned.txt"'''
+runs = ["for", "echo"]
+why = "A FOR replacement variable supplies the first half of the internal command name."
+
+[[case]]
+id = "cmd-14"
+command = '''for %A in ("ty") do @%~Ape nul>"%TEMP%\pwned.txt"'''
+runs = ["for", "type"]
+why = "FOR quote removal yields ty and adjacent text completes the hidden type command."
+
+[[case]]
+id = "cmd-15"
+command = '''for /f "delims=" %A in ("echo") do @%A pwned>"%TEMP%\pwned.txt"'''
+runs = ["for", "echo"]
+why = "FOR /F treats the double-quoted value as data and then executes that value as a command."
+
+[[case]]
+id = "cmd-16"
+command = '''for /f %A in ('echo echo') do @%A pwned>"%TEMP%\pwned.txt"'''
+runs = ["for", "cmd.exe", "echo", "echo"]
+why = "FOR /F obtains the eventual command name from the output of an implicit child shell."
+
+[[case]]
+id = "cmd-17"
+command = '''(for /l %A in (7,1,7) do @e^c^h^o pwned)>"%TEMP%\pwned.txt"'''
+runs = ["for", "echo"]
+why = "A one-iteration numeric loop and redirected block conceal a caret-split echo."
+
+[[case]]
+id = "cmd-18"
+command = '''%COMSPEC% /d /c %COMSPEC% /d /c echo pwned^>"%TEMP%\pwned.txt"'''
+runs = ["cmd.exe", "cmd.exe", "echo"]
+why = "The first shell receives an escaped redirection and applies it around a second nested shell."
+
+[[case]]
+id = "cmd-19"
+command = '''>"%TEMP%\pwned.txt" cmd /d /k "cmd /d /c e^c^h^o pwned&exit"'''
+runs = ["cmd.exe", "cmd.exe", "echo", "exit"]
+why = "A redirected persistent shell runs a nested transient shell and then explicitly exits."
+
+[[case]]
+id = "cmd-20"
+command = '''>"%TEMP%\pwned.txt" s^t^a^r^t "" /b /wait %COMSPEC% /d /c "e"c"h"o pwned'''
+runs = ["start", "cmd.exe", "echo"]
+why = "Caret-obscured START launches a background child whose quoted fragments resolve to echo."
+
+[[case]]
+id = "cmd-21"
+command = '''(@v^e^r>nul&@"e"c"h"o pwned)>"%TEMP%\pwned.txt"'''
+runs = ["ver", "echo"]
+why = "An unconditional chain hides the quote-spliced write behind a discarded version query."
+
+[[case]]
+id = "cmd-22"
+command = '''(v^e^r>nul&&t^y^p^e nul)>"%TEMP%\pwned.txt"'''
+runs = ["ver", "type"]
+why = "A successful version query gates a caret-split type inside an externally redirected block."
+
+[[case]]
+id = "cmd-23"
+command = '''(%COMSPEC% /d /c exit 7||@"ec"ho pwned)>"%TEMP%\pwned.txt"'''
+runs = ["cmd.exe", "exit", "echo"]
+why = "A deliberately failing child selects the OR branch containing a quote-spliced echo."
+
+[[case]]
+id = "cmd-24"
+command = '''(@r^e^m :: pretend-label&@e^c^h^o pwned)>"%TEMP%\pwned.txt"'''
+runs = ["rem"]
+why = "gpt-5.6-sol meant echo to run after the rem; cmd.exe (Windows 11, probed) takes the rest of the line as the comment, the ( is never closed and nothing runs. vetter asks (an unclosed block)."
+
+[[case]]
+id = "cmd-25"
+command = '''f^o^r^f^i^l^e^s /p "%SystemRoot%\System32" /m cmd.exe /c "cmd /d /c echo pwned>0x22%TEMP%\pwned.txt0x22"'''
+runs = ["forfiles.exe", "cmd.exe", "echo"]
+why = "FORFILES selects cmd.exe and decodes 0x22 markers into quotes around the redirection target."
+
+[[case]]
+id = "cmd-26"
+command = '''c^o^n^h^o^s^t.e^x^e %COMSPEC% /d /c e^c^h^o pwned^>"%TEMP%\pwned.txt"'''
+runs = ["conhost.exe", "cmd.exe", "echo"]
+why = "A caret-split console host launches COMSPEC with a redirection deferred to the child."
+
+[[case]]
+id = "cmd-27"
+command = '''>"%TEMP%\pwned.txt" p^o^w^e^r^s^h^e^l^l.e^x^e -NoProfile -Command "& $env:ComSpec /d /c 'echo pwned'"'''
+runs = ["powershell.exe", "cmd.exe", "echo"]
+why = "PowerShell invokes COMSPEC through its call operator while inherited stdout creates the file."
+
+[[case]]
+id = "cmd-28"
+command = '''e^c^h^o pwned|f^i^n^d^s^t^r.e^x^e "." 1>"%TEMP%\pwned.txt"'''
+runs = ["cmd.exe", "echo", "findstr.exe"]
+why = "A pipeline places the file-producing redirection on a caret-obscured filtering program."
+
+[[case]]
+id = "cmd-29"
+command = '''if not 1==2 (e^c^h^o pwned)>"%TEMP%\pwned.txt"'''
+runs = ["if", "echo"]
+why = "A true negated condition guards a redirected block containing a caret-split command."
+
+[[case]]
+id = "cmd-30"
+command = '''>nul c^o^p^y /y nul "%TEMP%\pwned.txt"'''
+runs = ["copy"]
+why = "A leading output sink hides COPY status while a caret-split internal command copies nul."

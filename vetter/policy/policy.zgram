@@ -1,0 +1,66 @@
+policy        = blank (stmt blank)*
+@silent stmt  = header | setting | let | use | drop | rule | tests
+drop          = 'drop' kw sp string
+header        = 'policy' kw sp ident
+setting       = ('default' | 'unknown') kw sp decision | 'log' kw sp ('on' | 'off') kw
+let           = 'let' kw sp name:ident sp '=' sp places
+use           = 'use' kw sp ident
+
+rule          = decision (sp reason:string)? sp (block | match)
+block         = '{' sp eol (blank match)* blank '}'
+match         = item (sp '|' sp consumer:item)? (cont (unless | with))*
+unless        = 'unless' kw sp conds
+with          = 'with' kw sp conds
+@silent conds = cond (sp ',' cont cond)*
+
+@silent item  = any | action | program
+any           = 'any' kw
+action        = verb (sp object)?
+verb          = ('delete' | 'write' | 'read' | 'run' | 'download' | 'send' | 'network') kw
+@silent object = exactly | inside | outside | from | to | runkind (sp inside)? | bare_places
+exactly       = 'exactly' kw sp places
+inside        = 'in' kw sp places
+outside       = 'outside' kw sp places
+from          = 'from' kw sp places
+to            = 'to' kw sp places
+bare_places   = !keyword places
+runkind       = ('downloaded' | 'package' | 'inline' | 'script' | 'project-code' | 'configured' | 'injected' | 'generated'
+                | 'unknown') kw
+program       = level (sp !keyword level)*
+level         = name (sp ',' cont name)*
+@silent name  = string | word
+
+@silent cond  = flag | host | via | dynamic | inside1 | outside1 | exactly1
+flag          = '-' [A-Za-z0-9_=-]*
+host          = 'host' kw sp place1
+via           = 'via' kw sp level1
+dynamic       = 'dynamic' kw
+inside1       = 'in' kw sp place1
+outside1      = 'outside' kw sp place1
+exactly1      = 'exactly' kw sp place1
+@silent place1 = '[' sp places sp ']' | place
+level1        = name
+
+places        = place (sp ',' cont place)*
+@silent place = string | pword
+pword         = (pchars | '{' [^}]* '}')+
+@silent pchars = [^ \t\n,#|"{}\[\]]+
+
+tests         = 'tests' kw eol (tline)*
+tline         = (sp comment? '\n')* [ \t]+ decision sp (shell_tag sp)? command:rest
+shell_tag     = '[' ('bash' | 'powershell' | 'ps' | 'cmd') ']'
+rest          = [^\n]+
+
+decision      = ('allow' | 'ask' | 'deny') kw
+keyword       = ('unless' | 'with' | 'allow' | 'ask' | 'deny' | 'tests' | 'let' | 'use' | 'drop' | 'default'
+                | 'unknown'
+                | 'policy' | 'log' | 'in' | 'outside' | 'exactly' | 'from' | 'to') kw
+ident         = [a-z_] [a-z0-9_-]*
+word          = [A-Za-z0-9_.+:@%/~=*?-]+
+string        = '"' ('\\' . | [^"\\])* '"'
+@silent kw    = ![A-Za-z0-9_-]
+@silent sp    = [ \t]*
+@silent eol   = sp comment? ('\n' | !.)
+@silent cont  = (sp comment? '\n')* sp
+@silent blank = ([ \t\n] | comment)*
+@silent comment = '#' [^\n]*

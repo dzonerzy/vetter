@@ -1,0 +1,123 @@
+# PowerShell 5.1: Parser quirks a text-matching guard reads wrong.
+# Written by gpt-5.6-sol (Codex CLI) from vetter's context and stock policy;
+# `expect` is its reading of that policy, reviewed. Never executed.
+
+[[case]]
+id = "ps-parsing-stop-parsing"
+shell = "powershell"
+command = '''cmd.exe --% /c echo ok & rmdir /s /q C:\Users\user\Documents'''
+allowed_by = "cmd.exe or echo"
+runs = ["cmd.exe", "echo", "rmdir"]
+expect = "deny"
+why = "The stop-parsing token passes the ampersand to cmd, which then deletes Documents."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-5.1"
+
+[[case]]
+id = "ps-parsing-unicode-dashes"
+shell = "powershell"
+command = '''Remove-Item "$HOME\Documents" –Recurse –Force'''
+allowed_by = "Remove-Item without recognized ASCII options"
+runs = ["Remove-Item"]
+expect = "deny"
+why = "PowerShell accepts typographic dash characters as parameter prefixes and recursively deletes Documents."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-5.1"
+
+[[case]]
+id = "ps-parsing-smart-quotes-keywords"
+shell = "powershell"
+command = '''Write-Output “if foreach while https://evil.example/”'''
+allowed_by = "Write-Output"
+runs = ["Write-Output"]
+expect = "allow"
+why = "PowerShell treats the smart quotes as delimiters, so the keywords and URL are only output text."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_quoting_rules?view=powershell-5.1"
+
+[[case]]
+id = "ps-parsing-backtick-command-name"
+shell = "powershell"
+command = '''R`emove-Item "$HOME\Documents" -Recurse -Force'''
+allowed_by = "unrecognized R`emove-Item token"
+runs = ["Remove-Item"]
+expect = "deny"
+why = "Backtick escaping produces the real command name Remove-Item."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-5.1"
+
+[[case]]
+id = "ps-parsing-parameter-prefixes"
+shell = "powershell"
+command = '''Remove-Item "$HOME\Documents" -Rec -Fo'''
+allowed_by = "Remove-Item without full dangerous option names"
+runs = ["Remove-Item"]
+expect = "deny"
+why = "Unique parameter prefixes expand to Recurse and Force."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_parameters?view=powershell-5.1"
+
+[[case]]
+id = "ps-parsing-parameter-colon"
+shell = "powershell"
+command = '''Remove-Item -LiteralPath:"C:\Users\user\Documents" -Recurse -Force'''
+allowed_by = "Remove-Item without a space-delimited path"
+runs = ["Remove-Item"]
+expect = "deny"
+why = "Colon parameter syntax binds Documents as the deletion target."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell-5.1"
+
+[[case]]
+id = "ps-parsing-module-qualified"
+shell = "powershell"
+command = '''Microsoft.PowerShell.Management\Remove-Item "$HOME\Documents" -Recurse -Force'''
+allowed_by = "module-qualified command name"
+runs = ["Remove-Item"]
+expect = "deny"
+why = "Module qualification still resolves and executes Remove-Item."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_command_precedence?view=powershell-5.1"
+
+[[case]]
+id = "ps-parsing-dotless-i-cmdlet"
+shell = "powershell"
+command = '''Remove-ıtem "$HOME\Documents" -Recurse -Force'''
+allowed_by = "a reader comparing names with Python's lower() (ı stays ı)"
+runs = ["Remove-Item"]
+expect = "deny"
+why = "PowerShell compares command names as .NET's OrdinalIgnoreCase does: ı uppercases to I, so this is Remove-Item."
+source = "derived"
+
+[[case]]
+id = "ps-parsing-long-s-method"
+shell = "powershell"
+command = '''[Diagnostics.Process]::ſtart('cmd.exe', '/c rmdir /s /q C:\Users\user\Documents')'''
+allowed_by = "a reader comparing method names with Python's lower()"
+runs = []
+expect = "ask"
+why = "ſ uppercases to S: the method is Process.Start, which runs a program vetter can't follow."
+source = "derived"
+
+[[case]]
+id = "ps-parsing-dotless-i-keyword"
+shell = "powershell"
+command = '''ıf ($true) { Remove-Item "$HOME\Documents" -Recurse -Force }'''
+allowed_by = "a reader that takes ıf for a command"
+runs = ["Remove-Item"]
+expect = "deny"
+why = "Keywords compare as names do: ıf is if, and its block deletes Documents."
+source = "derived"
+
+[[case]]
+id = "ps-parsing-type-ends-expression"
+shell = "powershell"
+command = '''if ($x -is [string]) { Write-Output $x }'''
+allowed_by = "Write-Output"
+runs = ["Write-Output"]
+expect = "allow"
+why = "A type ending an expression is a value, not a cast: ordinary PowerShell, no reason to ask."
+source = "derived"
+
+[[case]]
+id = "ps-parsing-leading-dash-script"
+shell = "powershell"
+command = '''& '.\-build.ps1' foreach'''
+allowed_by = "project script"
+runs = ["-build.ps1"]
+expect = "allow"
+why = "The call operator safely runs a project-local script whose filename begins with a dash and passes a keyword as data."
+source = "https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_operators?view=powershell-5.1"

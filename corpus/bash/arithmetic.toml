@@ -1,0 +1,151 @@
+# Arithmetic that runs commands: bash expands a subscript again when it
+# evaluates it (`a[$(cmd)]`, quoted or not), and evaluates a variable's value
+# as arithmetic too, so a value from outside (read, a file, a command's
+# output) can be code. Checked against bash 5.1: each ran its probe.
+
+[[case]]
+id = "arith-let-quoted"
+shell = "bash"
+command = "let 'a[$(rm -rf ~/work)]'"
+allowed_by = "builtins"
+runs = ["let", "rm"]
+expect = "deny"
+why = "let evaluates its argument: the subscript's substitution runs"
+source = "derived"
+
+[[case]]
+id = "arith-let-variable"
+shell = "bash"
+command = "x='a[$(rm -rf ~/work)]'; let x"
+allowed_by = "builtins"
+runs = ["let", "rm"]
+expect = "deny"
+why = "x's value is evaluated as arithmetic"
+source = "derived"
+
+[[case]]
+id = "arith-name-naming-name"
+shell = "bash"
+command = "y='a[$(rm -rf ~/work)]'; x=y; (( x ))"
+runs = ["rm"]
+expect = "deny"
+why = "x names y, whose value is evaluated in turn"
+source = "derived"
+
+[[case]]
+id = "arith-sq-subscript-assign"
+shell = "bash"
+command = "a['$(rm -rf ~/work)']=1"
+runs = ["rm"]
+expect = "deny"
+why = "an indexed array's subscript is expanded again: the quotes don't keep it text"
+source = "derived"
+
+[[case]]
+id = "arith-subscript-variable"
+shell = "bash"
+command = "x='$(rm -rf ~/work)'; (( a[$x] ))"
+runs = ["rm"]
+expect = "deny"
+why = "the subscript, $(rm ...) after the first expansion, is expanded again"
+source = "derived"
+
+[[case]]
+id = "arith-subscript-expansion"
+shell = "bash"
+command = "x='a[$(rm -rf ~/work)]'; a=(1); echo ${a[x]}"
+allowed_by = "builtins"
+runs = ["echo", "rm"]
+expect = "deny"
+why = "${a[x]}: x evaluated, its subscript expanded"
+source = "derived"
+
+[[case]]
+id = "arith-bash-c-argument"
+shell = "bash"
+command = "bash -c '(( $1 ))' _ 'a[$(rm -rf ~/work)]'"
+allowed_by = "builtins"
+runs = ["bash", "rm"]
+expect = "deny"
+why = "the argument is the arithmetic's text"
+source = "derived"
+
+[[case]]
+id = "arith-declare-integer"
+shell = "bash"
+command = "declare -i n='a[$(rm -rf ~/work)]'"
+allowed_by = "builtins"
+runs = ["declare", "rm"]
+expect = "deny"
+why = "an integer variable's value is evaluated"
+source = "derived"
+
+[[case]]
+id = "arith-read-value"
+shell = "bash"
+command = "read -r n < count.txt; echo $(( n + 1 ))"
+allowed_by = "builtins"
+runs = ["read", "echo"]
+expect = "ask"
+why = "what's read is evaluated: a file with a[$(...)] in it runs commands"
+source = "derived"
+
+[[case]]
+id = "arith-file-content"
+shell = "bash"
+command = "x=$(cat count.txt); (( x > 3 )) && echo many"
+allowed_by = "reading in the project"
+runs = ["cat", "echo"]
+expect = "ask"
+why = "the file's content is evaluated as arithmetic"
+source = "derived"
+
+[[case]]
+id = "arith-test-eq"
+shell = "bash"
+command = "read x; [[ $x -eq 0 ]] && echo zero"
+allowed_by = "builtins"
+runs = ["read", "echo"]
+expect = "ask"
+why = "[[ -eq ]] evaluates both sides"
+source = "derived"
+
+[[case]]
+id = "arith-integer-later"
+shell = "bash"
+command = "declare -i y; read x; y=$x"
+allowed_by = "builtins"
+runs = ["declare", "read"]
+expect = "ask"
+why = "y is an integer: what it's given is evaluated"
+source = "derived"
+
+[[case]]
+id = "arith-unset-subscript"
+shell = "bash"
+command = "read x; unset \"a[$x]\""
+allowed_by = "builtins"
+runs = ["read", "unset"]
+expect = "ask"
+why = "unset evaluates an indexed array's subscript"
+source = "derived"
+
+[[case]]
+id = "arith-substring-offset"
+shell = "bash"
+command = "read x; s=abc; echo ${s:$x}"
+allowed_by = "builtins"
+runs = ["read", "echo"]
+expect = "ask"
+why = "a substring's offset is arithmetic"
+source = "derived"
+
+[[case]]
+id = "arith-loop-over-output"
+shell = "bash"
+command = "for v in $(cat list.txt); do (( v )) && echo $v; done"
+allowed_by = "reading in the project"
+runs = ["cat", "echo"]
+expect = "ask"
+why = "each word of the file is evaluated"
+source = "derived"
