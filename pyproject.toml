@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Vets every command your AI agent wants to run: bash read exactly as bash reads it, decided by a policy."
 requires-python = ">=3.11"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Daniele Linguaglossa" }]
 # (zrun: vetter is its strict subset, run by it; 0.7.2: native I/O, node.find,
 # Unicode isalnum; 0.7.3: a helper's change to its caller's list compiled

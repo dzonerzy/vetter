@@ -150,3 +150,10 @@ vetter is built on [zsuite](https://github.com/dzonerzy/zsuite): zgram (the
 grammars), zrules (checking policies) and zrun (running vetter as Python, or
 compiled to native code with no Python in it), with zlsp to come for the
 policy editor.
+
+## License
+
+vetter is licensed under the [Apache License 2.0](LICENSE). The bypass
+corpus in [`corpus/`](corpus/) is licensed separately under
+[CC BY 4.0](corpus/LICENSE): use it to benchmark any command guard, with
+credit to the vetter bypass corpus.

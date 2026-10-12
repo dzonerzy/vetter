@@ -33,3 +33,9 @@
 - [Development](development.md): layout, the strict subset, tests,
   adding cases, specs and rules.
 - [Roadmap](roadmap.md)
+
+## License
+
+vetter is licensed under the [Apache License 2.0](../LICENSE). The bypass
+corpus is licensed under [CC BY 4.0](../corpus/LICENSE): see
+[`corpus/README.md`](../corpus/README.md).
