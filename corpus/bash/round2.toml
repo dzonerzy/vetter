@@ -579,3 +579,51 @@ runs = ["gawk"]
 expect = "ask"
 why = "-i includes the code"
 source = "derived"
+
+# A tool's own variable vetter has no entry for: asked, not assumed nothing
+# (env.toml's tool_setting namespaces)
+
+[[case]]
+id = "env-git-trace"
+shell = "bash"
+command = "GIT_TRACE=/home/user/.bashrc git status"
+runs = ["git"]
+expect = "ask"
+why = "git writes its trace to the file GIT_TRACE names"
+source = "derived"
+
+[[case]]
+id = "env-pythonbreakpoint"
+shell = "bash"
+command = "PYTHONBREAKPOINT=os.system pytest -q"
+runs = ["pytest"]
+expect = "ask"
+why = "breakpoint() calls what PYTHONBREAKPOINT names"
+source = "derived"
+
+[[case]]
+id = "env-cflags-plugin"
+shell = "bash"
+command = "CFLAGS=-fplugin=/tmp/p.so make"
+runs = ["make"]
+expect = "ask"
+why = "the compiler loads the plugin CFLAGS gives it"
+source = "derived"
+
+[[case]]
+id = "env-proxy"
+shell = "bash"
+command = "https_proxy=http://203.0.113.9:8080 npm install"
+runs = ["npm"]
+expect = "ask"
+why = "its traffic through someone's proxy"
+source = "derived"
+
+[[case]]
+id = "env-tool-setting-exported"
+shell = "bash"
+command = "export CARGO_UNSTABLE_X=1; cargo build"
+runs = ["export", "cargo"]
+expect = "ask"
+why = "a cargo setting vetter has no entry for"
+source = "derived"

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import zgram
 
 from ... import paths
-from ...specs import Role, apply_specs, env_role
+from ...specs import WRAPPERS, Role, apply_specs, env_role
 from . import arith
 from .expand import (
     NUMBER,
@@ -57,10 +57,6 @@ CODE_BUILTINS = {"eval", "source", ".", "exec", "command", "builtin", "coproc"}
 
 # Variables bash expands again where it uses them (expanded_later)
 EXPANDED_LATER = {"PS0", "PS1", "PS2", "PS3", "PS4"}
-
-WRAPPERS = {"env", "command", "builtin", "exec", "sudo", "doas", "nice", "nohup", "setsid", "stdbuf", "time",
-            "timeout", "chroot", "ionice", "taskset", "chrt", "flock", "unbuffer", "xargs", "find", "watch", "su",
-            "ssh"}
 
 SUBSTITUTIONS = {"cmdsub": "$(...)", "procsub": "<(...)", "backtick": "`...`"}
 

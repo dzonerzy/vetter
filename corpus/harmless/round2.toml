@@ -193,3 +193,39 @@ runs = ["Get-Content"]
 expect = "allow"
 why = "a default the table is given plainly"
 source = "derived"
+
+[[case]]
+id = "harmless-env-app-settings"
+shell = "bash"
+command = "DATABASE_URL=sqlite:///dev.db API_KEY=test PORT=3001 npm test"
+runs = ["npm"]
+expect = "allow"
+why = "the project's code's settings, not npm's"
+source = "derived"
+
+[[case]]
+id = "harmless-env-tool-known"
+shell = "bash"
+command = "NODE_ENV=production CI=1 RUST_LOG=debug CFLAGS=-O2 make release"
+runs = ["make"]
+expect = "allow"
+why = "settings known to change nothing that runs"
+source = "derived"
+
+[[case]]
+id = "harmless-env-exported-app"
+shell = "bash"
+command = "export APP_ENV=test; npm test"
+runs = ["export", "npm"]
+expect = "allow"
+why = "the project's setting"
+source = "derived"
+
+[[case]]
+id = "harmless-env-cmd"
+shell = "cmd"
+command = '''set NODE_ENV=production&& npm run build'''
+runs = ["npm"]
+expect = "allow"
+why = "a setting known to change nothing that runs"
+source = "derived"

@@ -91,6 +91,11 @@ EMPTY = _spec(py_specs.Spec({}))
 
 DOWNLOADERS = {"curl", "wget", "fetch", "aria2c", "http", "xh"}
 
+# Programs that run another command (bash's resolver reads that one)
+WRAPPERS = {"env", "command", "builtin", "exec", "sudo", "doas", "nice", "nohup", "setsid", "stdbuf", "time",
+            "timeout", "chroot", "ionice", "taskset", "chrt", "flock", "unbuffer", "xargs", "find", "watch", "su",
+            "ssh"}
+
 HIVES = {"hkcu": "HKCU", "hkey_current_user": "HKCU", "hklm": "HKLM", "hkey_local_machine": "HKLM",
          "hkcr": "HKCR", "hkey_classes_root": "HKCR", "hku": "HKU", "hkey_users": "HKU", "hkcc": "HKCC",
          "hkey_current_config": "HKCC"}
@@ -1808,6 +1813,14 @@ def apply_env(rt, w, e, ctx):
         r = env_role(var)
         if var == "HOME" and field_static(value) == ctx.home:
             # (HOME=$HOME: the home it has)
+            continue
+        if r == "tool_setting":
+            # (a tool's or a runtime's own, not one known to change nothing:
+            # what it does with it, only running tells; a wrapper's program
+            # gets it too, and is decided on its own)
+            if e.kind == "program" and name is not None and name not in WRAPPERS:
+                unknown(rt, w, var + "=" + field_text(value) + ": what " + who + " does with " + var
+                        + ", vetter doesn't know", e.span, ctx, "code", [])
             continue
         if r is None or r == "plain":
             continue
