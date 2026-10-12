@@ -31,10 +31,12 @@ class Role:
 @dataclass
 class Flag:
     """A flag (a subcommand, the program itself) doing what vetter doesn't
-    see: why, and the Unknown's kind."""
+    see: why, and the Unknown's kind; not with one of the options in
+    unless (npm ci --ignore-scripts)."""
 
     reason: str
     kind: str
+    unless: list
 
 
 @dataclass
@@ -66,21 +68,27 @@ class Spec:
     # (options giving what the first operand is otherwise (grep -e PATTERN):
     # one given, every operand has the role after it)
     pattern_options: list
+    # (strict, for these names: an option it doesn't list (values, roles,
+    # flags, switches, attached, an option of a family) an Unknown, not
+    # taken for nothing)
+    strict: set
+    switches: set
+    families: list
 
 
 def _spec(s):
     flags = {}
     for k, v in s.flags.items():
         if isinstance(v, dict):
-            flags[k] = Flag(v.get("reason", ""), v.get("kind", "configured"))
+            flags[k] = Flag(v.get("reason", ""), v.get("kind", "configured"), list(v.get("unless", [])))
         else:
-            flags[k] = Flag(v, "configured")
+            flags[k] = Flag(v, "configured", [])
     pattern = list(s.operands) if isinstance(s.operands, list) else []
     return Spec(list(s.names), dict(s.roles), set(s.values), flags, "pattern" if pattern else s.operands, pattern,
                 bool(s.subcommands), bool(s.stop_at_operand), bool(s.single_dash_long), bool(s.slash_options),
                 bool(s.readonly), dict(s.config), {k: _spec(v) for k, v in s.sub.items()}, set(s.commands),
                 bool(s.stdin_program), list(s.attached), dict(s.anywhere), bool(s.response_files),
-                list(s.pattern_options))
+                list(s.pattern_options), set(s.strict), set(s.switches), list(s.families))
 
 
 SPECS = {name: _spec(s) for name, s in py_specs.SPECS.items()}
@@ -519,7 +527,9 @@ def apply_specs(rt, w, e, ctx):
     spec_roles(rt, w, e, ctx)
     dest = extraction(e)
     if dest is not None:
+        # (what it extracts written there)
         e.roles.append(Role("extract", dest, None))
+        e.roles.append(Role("write", dest, None))
     where = None
     for k in range(first, len(w.r.unknowns)):
         u = w.r.unknowns[k]
@@ -683,6 +693,9 @@ def flag(rt, w, e, ctx, label, value, given):
     doesn't see; given: what it works on."""
     from ..shells.bash.resolve import unknown
 
+    for o in option_names(e):
+        if o in value.unless:
+            return
     if value.kind == "delete_starts":
         # (find -delete: deletes what's under its starting points)
         starts = given if len(given) > 0 else [Field(["."], False, False)]
@@ -696,6 +709,26 @@ def flag(rt, w, e, ctx, label, value, given):
             e.roles.append(Role("delete", under, last_word(label)))
         return
     unknown(rt, w, label + ": " + value.reason, e.span, ctx, value.kind, given)
+
+
+def known_option(spec, name):
+    """Does the spec list the option: its value's role or none, a flag, a
+    switch, one taking a value glued on, one of a family it names?"""
+    if name in spec.values or name in spec.roles or name in spec.flags or name in spec.switches \
+            or name in spec.anywhere or name in spec.attached:
+        return True
+    for f in spec.families:
+        # (-std=c11 is named -std: a family -std= is its)
+        if name.startswith(f) or (name + "=").startswith(f):
+            return True
+    if name.startswith("-") and not name.startswith("--") and len(name) > 2:
+        # (short ones together, -rq9: each one listed)
+        for c in name[1:]:
+            if "-" + c not in spec.switches and "-" + c not in spec.values and "-" + c not in spec.flags \
+                    and "-" + c not in spec.roles:
+                return False
+        return True
+    return False
 
 
 def apply_options(rt, w, e, ctx, spec, options, parent, starts):
@@ -714,6 +747,22 @@ def apply_options(rt, w, e, ctx, spec, options, parent, starts):
             continue
         if name in spec.flags:
             flag(rt, w, e, ctx, str(exec_name(e)) + " " + name, spec.flags[name], starts)
+        elif spec.single_dash_long and name.startswith("-") and not name.startswith("--") and len(name) > 2 \
+                and name not in spec.values and name not in spec.switches:
+            # (zip -rm: short ones together, -m's flag among them)
+            for c in name[1:]:
+                if "-" + c in spec.flags:
+                    flag(rt, w, e, ctx, str(exec_name(e)) + " -" + c, spec.flags["-" + c], starts)
+        top = parent if parent is not None else spec
+        prog = str(exec_name(e))
+        # (strict for this name; or another program's options read as its,
+        # JAVA_TOOL_OPTIONS for gradle: strict as they are)
+        strict = prog in top.strict or (len(top.strict) > 0 and (prog not in SPECS or SPECS[prog].names != top.names))
+        if strict and not known_option(spec, name) and not (parent is not None and known_option(parent, name)):
+            # (strict: one it doesn't list (a subcommand's, or its
+            # program's), what it does only running tells)
+            unknown(rt, w, str(exec_name(e)) + " " + name + ": an option vetter doesn't know", e.span, ctx, "code", [])
+            continue
         if name not in spec.roles or value is None:
             continue
         role(rt, w, e, ctx, spec.roles[name], value, name, parent if parent is not None else spec)
@@ -725,6 +774,25 @@ def apply_operands(rt, w, e, ctx, spec, operands, parent):
     kind = spec.operands
     if kind == "sed" or kind == "awk":
         script_operands(rt, w, e, ctx, kind, operands)
+        return
+    if kind == "tar":
+        for why in tar_files(e, spec):
+            unknown(rt, w, str(exec_name(e)) + " " + why, e.span, ctx, "code", [])
+        return
+    if kind == "compressed":
+        # (xz FILE: FILE.xz written beside it, FILE deleted; -c, -k, -t,
+        # -l: only read)
+        keep = False
+        for o in option_names(e):
+            if o == "--stdout" or o == "--to-stdout" or o == "--keep" or o == "--test" or o == "--list":
+                keep = True
+            elif not o.startswith("--") and ("c" in o or "k" in o or "t" in o or "l" in o):
+                keep = True
+        for o in operands:
+            e.roles.append(Role("read", o, None))
+            if not keep and not (field_known(o) and field_static(o) == "-"):
+                e.roles.append(Role("write", o, None))
+                e.roles.append(Role("delete", o, None))
         return
     if kind == "dd_operands":
         for o in operands:
@@ -895,6 +963,19 @@ def role(rt, w, e, ctx, r, value, option, spec):
                 code(rt, w, val if "/" in first else "git-credential-" + val, ctx, e.span, "git " + key, False, None)
         elif cr is not None and cr != "plain":
             role(rt, w, e, ctx, cr, Field([val], False, False), "-c " + key, spec)
+    elif r == "opt_info":
+        # (-fopt-info-all=FILE, -fopt-info=FILE: the notes written there)
+        if field_known(value) and "=" in field_static(value):
+            e.roles.append(Role("write", Field([field_static(value).partition("=")[2]], False, False), option))
+        elif not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": a file only running tells", e.span, ctx, "code", [])
+    elif r == "module_patch":
+        # (java --patch-module MODULE=FILE:FILE: the classes in each)
+        if field_known(value):
+            role(rt, w, e, ctx, "classpath", Field([field_static(value).partition("=")[2]], False, False), option,
+                 spec)
+        else:
+            unknown(rt, w, labelled(name, option) + ": classes from where only running tells", e.span, ctx, "code", [])
     elif r == "rustc_extern":
         if not field_known(value):
             unknown(rt, w, labelled(name, option) + ": a crate only running tells", e.span, ctx, "code", [])
@@ -917,7 +998,7 @@ def role(rt, w, e, ctx, r, value, option, spec):
         bang = s.find("!")
         if at >= 0 and (bang < 0 or at < bang):
             role(rt, w, e, ctx, "file_list", Field([s[at + 1 :]], False, False), option, spec)
-        elif bang >= 0 and option == "-i":
+        elif bang >= 0 and (option == "-i" or option == "-ai"):
             e.roles.append(Role("read", Field([s[bang + 1 :]], False, False), option))
     elif r == "awk_w":
         # (mawk -W exec=FILE: the program in FILE; -W exec FILE: the
@@ -1298,6 +1379,123 @@ def option_names(e):
         if field_known(a) and field_static(a).startswith("-"):
             out.append(field_static(a).partition("=")[0])
     return out
+
+
+# tar's modes by their letter and long name; the short options taking a
+# value (in an old-style cluster, `czf ARCHIVE`, the values follow in order)
+TAR_MODES = "cruxtdA"
+TAR_LONG_MODES = {"--create": "c", "--append": "r", "--update": "u", "--extract": "x", "--get": "x", "--list": "t",
+                  "--diff": "d", "--compare": "d", "--delete": "D", "--catenate": "A", "--concatenate": "A"}
+TAR_VALUED = "fCTXIFbHVNKLg"
+
+
+def tar_files(e, spec):
+    """tar's archive and files: created (c, r, u, A), each file read and
+    the archive written; extracted or listed (x, t), the archive read; each
+    file relative to the -C before it. What it does that the options'
+    flags don't see: an old-style cluster's P (absolute names), h (links
+    followed); an archive on another host (HOST:FILE, through rsh)."""
+    args = e.argv[1:]
+    out = []
+    local = False
+    mode = ""
+    archive = None
+    where = None
+    files = []
+    k = 0
+    while k < len(args):
+        s = field_static(args[k])
+        if s is None:
+            files.append((where, args[k]))
+            k += 1
+            continue
+        if k == 0 and s != "" and not s.startswith("-"):
+            # (czf ARCHIVE FILE...: the letters, their values after)
+            n = 0
+            for c in s:
+                if c == "P":
+                    out.append("P: extracts to the paths the archive names, anywhere")
+                elif c == "h":
+                    out.append("h: reads what the links in its files point to")
+                if c in TAR_MODES:
+                    mode = c
+                if c in TAR_VALUED and k + 1 + n < len(args):
+                    v = args[k + 1 + n]
+                    n += 1
+                    if c == "f":
+                        archive = v
+                    elif c == "C":
+                        where = v
+            k += 1 + n
+            continue
+        if s == "--":
+            for a in args[k + 1 :]:
+                files.append((where, a))
+            break
+        if s.startswith("--"):
+            name, eq, val = s.partition("=")
+            if name == "--force-local":
+                local = True
+            if name in TAR_LONG_MODES:
+                mode = TAR_LONG_MODES[name]
+            elif name in spec.values:
+                v = Field([val], False, False) if eq != "" else (args[k + 1] if k + 1 < len(args) else None)
+                if eq == "":
+                    k += 1
+                if name == "--file":
+                    archive = v
+                elif name == "--directory":
+                    where = v
+            k += 1
+            continue
+        if s.startswith("-") and len(s) > 1:
+            for i in range(1, len(s)):
+                c = s[i]
+                if c in TAR_MODES:
+                    mode = c
+                if c in TAR_VALUED:
+                    if i + 1 < len(s):
+                        v = Field([s[i + 1 :]], False, False)
+                    else:
+                        v = args[k + 1] if k + 1 < len(args) else None
+                        k += 1
+                    if c == "f":
+                        archive = v
+                    elif c == "C":
+                        where = v
+                    break
+            k += 1
+            continue
+        files.append((where, args[k]))
+        k += 1
+    creates = mode == "c" or mode == "r" or mode == "u" or mode == "A" or mode == "D"
+    if archive is not None and not (field_known(archive) and field_static(archive) == "-"):
+        e.roles.append(Role("write" if creates else "read", archive, "-f"))
+    if creates or mode == "d":
+        for d, f in files:
+            if mode != "D":
+                e.roles.append(Role("read", below(d, f), None))
+    if archive is not None and field_known(archive) and not local:
+        a = field_static(archive)
+        colon = a.find(":")
+        slash = a.find("/")
+        if colon > 0 and (slash < 0 or colon < slash):
+            # (HOST:FILE, USER@HOST:FILE: the archive sent or fetched
+            # through rsh / ssh)
+            out.append("-f " + a + ": the archive on another host, through rsh")
+    return out
+
+
+def below(d, f):
+    """f relative to the folder -C named (None: where it runs)."""
+    if d is None:
+        return f
+    if not field_known(d) or not field_known(f):
+        return Field([Dynamic(None, "")], False, False)
+    fs = field_static(f)
+    if fs.startswith("/") or fs.startswith("~"):
+        return f
+    return Field([field_static(d).rstrip("/") + "/" + fs], False, False)
 
 
 def awk_exec(value):

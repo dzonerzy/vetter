@@ -472,11 +472,48 @@ name = ["tar", "bsdtar", "gtar"]
 values = ["-f", "--file", "-C", "--directory", "-T", "--files-from", "-X", "--exclude-from", "--exclude",
           "-I", "--use-compress-program", "--to-command", "--rsh-command", "--info-script", "-F",
           "--new-volume-script", "--checkpoint-action", "-b", "--blocking-factor", "-H", "--format", "-V",
-          "--label", "-N", "--newer", "--transform", "--xform", "--owner", "--group", "--mode"]
-operands = "plain"
+          "--label", "-N", "--newer", "--transform", "--xform", "--owner", "--group", "--mode", "-g",
+          "--listed-incremental", "--add-file", "--rmt-command", "--volno-file", "--index-file", "--group-map",
+          "--owner-map", "-L", "--tape-length", "-K", "--starting-file", "--newer-mtime", "--mtime", "--suffix",
+          "--strip-components", "--record-size", "--level", "--hole-detection", "--sparse-version", "--sort",
+          "--warning", "--quoting-style", "--quote-chars", "--no-quote-chars", "--xattrs-exclude",
+          "--xattrs-include", "--exclude-ignore", "--exclude-ignore-recursive", "--exclude-tag",
+          "--exclude-tag-all", "--exclude-tag-under", "--pax-option"]
+# (its mode, archive and files, each relative to the -C before it: tar_files)
+operands = "tar"
+# (GNU tar 1.34's --help: every option; bsdtar's are its own)
+strict = ["tar", "gtar"]
+switches = ["-A", "--catenate", "--concatenate", "-c", "--create", "--delete", "-d", "--diff", "--compare", "-r",
+            "--append", "--test-label", "-t", "--list", "-u", "--update", "-x", "--extract", "--get",
+            "--check-device", "-G", "--incremental", "--ignore-failed-read", "--no-check-device", "--no-seek", "-n",
+            "--seek", "--sparse", "-S", "--exclude-backups", "--exclude-caches", "--exclude-caches-all",
+            "--exclude-caches-under", "--exclude-vcs", "--exclude-vcs-ignores", "--no-null", "--no-recursion",
+            "--no-unquote", "--no-verbatim-files-from", "--null", "--verbatim-files-from", "--recursion",
+            "--unquote", "--anchored", "--ignore-case", "--no-anchored", "--no-ignore-case", "--no-wildcards",
+            "--no-wildcards-match-slash", "--wildcards", "--wildcards-match-slash", "--keep-directory-symlink",
+            "--keep-newer-files", "-k", "--keep-old-files", "--no-overwrite-dir", "--overwrite", "--overwrite-dir",
+            "--recursive-unlink", "--skip-old-files", "-U", "--unlink-first", "-W", "--verify",
+            "--ignore-command-error", "--no-ignore-command-error", "-O", "--to-stdout", "--clamp-mtime",
+            "--delay-directory-restore", "-m", "--touch", "--no-delay-directory-restore", "--no-same-owner",
+            "--no-same-permissions", "--numeric-owner", "-p", "--preserve-permissions", "--same-owner", "-s",
+            "--preserve-order", "--same-order", "--acls", "--no-acls", "--no-selinux", "--no-xattrs", "--selinux",
+            "--xattrs", "--force-local", "-M", "--multi-volume", "-B", "--read-full-records", "-i",
+            "--ignore-zeros", "--old-archive", "--portability", "--posix", "-a", "--auto-compress", "-j", "--bzip2",
+            "-J", "--xz", "--lzip", "--lzma", "--lzop", "--no-auto-compress", "--zstd", "-z", "--gzip",
+            "--gunzip", "--ungzip", "-Z", "--compress", "--uncompress", "--one-file-system", "--full-time", "-l",
+            "--check-links", "-R", "--block-number", "--show-defaults", "--show-omitted-dirs",
+            "--show-snapshot-field-ranges", "--show-transformed-names", "--utc", "-v", "--verbose", "-w",
+            "--interactive", "--confirmation", "-?", "--help", "--restrict", "--usage", "--version", "--exclude"]
+# (options whose value is optional: --one-top-level[=DIR] its own below)
+families = ["--occurrence", "--atime-preserve", "--backup", "--checkpoint", "--totals"]
 [spec.roles]
-"-C" = "cwd"
-"--directory" = "cwd"
+"-g" = "write"
+"--listed-incremental" = "write"
+"--volno-file" = "write"
+"--index-file" = "write"
+"--add-file" = "read"
+"--rmt-command" = "program"
+"--one-top-level" = "write"
 "-T" = "file_list"
 "--files-from" = "file_list"
 "-I" = "cmdline"
@@ -487,14 +524,34 @@ operands = "plain"
 "-F" = "shell"
 "--new-volume-script" = "shell"
 "--checkpoint-action" = "tar_checkpoint"
+[spec.flags]
+# (-P: extracted to the paths the archive names, / and .. kept)
+"-P" = {reason = "extracts to the paths the archive names, anywhere", kind = "code"}
+"--absolute-names" = {reason = "extracts to the paths the archive names, anywhere", kind = "code"}
+# (the files added, deleted; links followed: what they point to read)
+"--remove-files" = {reason = "deletes the files it adds", kind = "code"}
+"-h" = {reason = "reads what the links in its files point to", kind = "code"}
+"--dereference" = {reason = "reads what the links in its files point to", kind = "code"}
+"--hard-dereference" = {reason = "reads what the links in its files point to", kind = "code"}
 
-# Compressors: each file read (and, without -c, written compressed or
-# expanded beside it: the policy sees the read)
+# Compressors: each file read; without -c / -k (zcat, xzcat: always
+# stdout), written compressed or expanded beside it and deleted
 [[spec]]
-name = ["gzip", "gunzip", "zcat", "bzip2", "bunzip2", "bzcat", "xz", "unxz", "xzcat", "lzma", "unlzma", "lzcat"]
+name = ["gzip", "gunzip", "bzip2", "bunzip2", "xz", "unxz", "lzma", "unlzma"]
 values = ["-S", "--suffix", "-T", "--threads", "-F", "--format", "-C", "--check", "-M", "--memlimit",
-          "--memlimit-compress", "--memlimit-decompress", "--block-size", "--block-list"]
-operands = "read"
+          "--memlimit-compress", "--memlimit-decompress", "--block-size", "--block-list", "--flush-timeout"]
+operands = "compressed"
+# (xz 5.4's --long-help, gzip's and bzip2's: every option; the filter
+# chains, --lzma2=OPTS...)
+strict = true
+switches = ["-z", "--compress", "-d", "--decompress", "--uncompress", "-t", "--test", "-l", "--list", "-k", "--keep",
+            "-f", "--force", "-c", "--stdout", "--to-stdout", "--single-stream", "--no-sparse", "--ignore-check",
+            "-0", "-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "--fast", "--best", "-e", "--extreme",
+            "--no-adjust", "-q", "--quiet", "-v", "--verbose", "-Q", "--no-warn", "--robot", "--info-memory", "-h",
+            "--help", "-H", "--long-help", "-V", "--version", "-L", "--license", "-n", "--no-name", "-N", "--name",
+            "-r", "--recursive", "--rsyncable", "-s", "--small", "--synchronous"]
+families = ["--lzma1", "--lzma2", "--x86", "--powerpc", "--ia64", "--arm", "--armthumb", "--arm64", "--sparc",
+            "--riscv", "--delta", "--format=", "--check="]
 [spec.roles]
 # (xz --files=LIST: the files LIST names; with no LIST, its stdin's)
 "--files" = "file_list"
@@ -502,6 +559,12 @@ operands = "read"
 [spec.flags]
 "--files" = {reason = "reads the files named on its stdin, or in the list", kind = "configured"}
 "--files0" = {reason = "reads the files named on its stdin, or in the list", kind = "configured"}
+
+# (to stdout: each file read)
+[[spec]]
+name = ["zcat", "bzcat", "xzcat", "lzcat"]
+values = ["-S", "--suffix", "-T", "--threads", "-F", "--format", "-M", "--memlimit"]
+operands = "read"
 
 [[spec]]
 name = ["zstd", "unzstd", "zstdcat"]
@@ -519,20 +582,41 @@ operands = "read"
 [[spec]]
 name = ["zip"]
 values = ["-b", "--temp-path", "-n", "--suffixes", "-t", "--from-date", "-tt", "--before-date", "-P", "--password",
-          "-TT", "--unzip-command", "-O", "--output-file", "-Z", "--compression-method", "-s", "--split-size", "-sb",
-          "-sp", "-sv", "-ll", "-la", "-lf", "-li"]
+          "-TT", "--unzip-command", "-O", "--output-file", "-Z", "--compression-method", "-s", "--split-size",
+          "-lf", "--logfile-path", "--out", "-ds", "--dot-size", "-x", "--exclude", "-i", "--include"]
 single_dash_long = true
 operands = ["write", "read*"]
+# (Info-ZIP Zip 3.0's -h2: every option; -UN=... its forms)
+strict = true
+switches = ["-f", "-u", "-d", "-r", "-j", "-0", "-1", "-2", "-3", "-4", "-5", "-6", "-7", "-8", "-9", "-l", "-ll",
+            "-q", "-v", "-c", "-z", "-o", "-F", "-FF", "-D", "-A", "-J", "-T", "-X", "-X-", "-y", "-e", "-h", "-h2",
+            "-FS", "-U", "-R", "-ic", "-RE", "-nw", "-ws", "-db", "-dc", "-dd", "-dg", "-du", "-dv", "-la", "-li",
+            "-DF", "-AS", "-AC", "-sf", "-sf-", "-su", "-sU", "-sp", "-sb", "-sv", "-sc", "-sd", "-so", "-MM", "-FI",
+            "-fz-", "-g", "-k", "-L", "-S", "-$", "--recurse-paths", "--recurse-patterns", "--quiet", "--verbose",
+            "--junk-paths", "--test", "--update", "--freshen", "--delete", "--encrypt", "--symlinks",
+            "--no-dir-entries", "--no-extra", "--fix", "--fixfix", "--filesync", "--copy", "--copy-entries", "--dif",
+            "--display-bytes", "--display-counts", "--display-dots", "--display-globaldots", "--display-usize",
+            "--display-volume", "--log-append", "--log-info", "--show-files", "--must-match", "--no-wildcards",
+            "--wild-stop-dirs", "--grow", "--adjust-sfx", "--junk-sfx", "--latest-time", "--entry-comments",
+            "--archive-comment", "--fifo", "--help", "--version", "--license", "--ignore-case", "--regex",
+            "--to-crlf", "--from-crlf"]
+families = ["-UN="]
 [spec.roles]
 "-TT" = "shell"
 "--unzip-command" = "shell"
 "-O" = "write"
 "--output-file" = "write"
+"--out" = "write"
 "-lf" = "write"
+"--logfile-path" = "write"
+"-b" = "write"
+"--temp-path" = "write"
 [spec.flags]
-# (-@: the files to add, named on its stdin)
+# (-@: the files to add, named on its stdin; -m: the files added deleted)
 "-@" = {reason = "reads the files named on its stdin", kind = "configured"}
 "--names-stdin" = {reason = "reads the files named on its stdin", kind = "configured"}
+"-m" = {reason = "deletes the files it adds", kind = "code"}
+"--move" = {reason = "deletes the files it adds", kind = "code"}
 
 # unzip ARCHIVE [MEMBER...] [-x MEMBER...] [-d DIR]
 [[spec]]
@@ -541,26 +625,53 @@ values = ["-d", "-P", "-I", "-O"]
 operands = ["read", "plain*"]
 [spec.roles]
 "-d" = "write"
+[spec.flags]
+# (-: keeps ../ and / in the names: extracted anywhere)
+"-:" = {reason = "extracts to the paths the archive names, anywhere", kind = "code"}
 
 [[spec]]
 name = ["7z", "7za", "7zr"]
-# (its values glued on: -oDIR, -pPASSWORD)
-attached = ["-o", "-p", "-t", "-m", "-x", "-i", "-w"]
+# (its switches are words, their values glued on: -oDIR, -pPASSWORD, -mx9)
+single_dash_long = true
+attached = ["-o", "-p", "-t", "-m", "-x", "-i", "-w", "-ai", "-ax"]
 # (7z COMMAND ARCHIVE FILE...: the archive and the files read; @LIST the
 # files it names)
 operands = ["plain", "read_or_list*"]
+# (p7zip 16.02's switches: every one)
+strict = true
+switches = ["--", "-an", "-bd", "-bt", "-slp", "-slt", "-snh", "-snl", "-sni", "-spd", "-spe", "-ssw",
+            "-stl", "-y", "-so"]
+families = ["-ao", "-bb", "-bs", "-r", "-sa", "-scc", "-scs", "-scrc", "-sfx", "-si", "-sns", "-ssc", "-stm",
+            "-stx", "-u", "-v"]
 [spec.roles]
 "-o" = "write"
 "-w" = "write"
 "-i" = "archive_switch"
 "-x" = "archive_switch"
+"-ai" = "archive_switch"
+"-ax" = "archive_switch"
+[spec.flags]
+"-sdel" = {reason = "deletes the files after adding them", kind = "code"}
+"-spf" = {reason = "extracts to the full paths the archive names, anywhere", kind = "code"}
+"-seml" = {reason = "sends the archive by email", kind = "code"}
 
 # cpio -o, -p: the files named on its stdin, read
 [[spec]]
 name = ["cpio"]
 values = ["-F", "--file", "-O", "-I", "-E", "--pattern-file", "-H", "--format", "-R", "--owner", "-C",
-          "--io-size", "-M", "--message", "--rsh-command", "-D", "--directory"]
+          "--io-size", "-M", "--message", "--rsh-command", "-D", "--directory", "--block-size", "-W", "--warning"]
+# (GNU cpio 2.13's --help: every option)
+strict = true
+switches = ["-i", "--extract", "-t", "--list", "-B", "-c", "--force-local", "--quiet", "-v", "--verbose", "-V", "--dot",
+            "-b", "--swap", "-f", "--nonmatching", "-n", "--numeric-uid-gid", "-r", "--rename", "-s", "--swap-bytes",
+            "-S", "--swap-halfwords", "--to-stdout", "--only-verify-crc", "-A", "--append", "--device-independent",
+            "--reproducible", "--ignore-devno", "--renumber-inodes", "-l", "--link", "--no-absolute-filenames",
+            "-0", "--null", "-a", "--reset-access-time", "-L", "--dereference", "-d", "--make-directories", "-m",
+            "--preserve-modification-time", "--no-preserve-owner", "--sparse", "-u", "--unconditional", "-?",
+            "--help", "--usage", "--version"]
 [spec.roles]
+"-F" = "write"
+"--file" = "write"
 "-O" = "write"
 "-I" = "read"
 "-E" = "read"
@@ -573,6 +684,7 @@ values = ["-F", "--file", "-O", "-I", "-E", "--pattern-file", "-H", "--format", 
 "--create" = {reason = "reads the files named on its stdin", kind = "configured"}
 "-p" = {reason = "copies the files named on its stdin", kind = "configured"}
 "--pass-through" = {reason = "copies the files named on its stdin", kind = "configured"}
+"--absolute-filenames" = {reason = "extracts to the paths the archive names, anywhere", kind = "code"}
 
 # GNU time [-o FILE] COMMAND: the command is a wrapper's; -o's file written
 [[spec]]
@@ -580,6 +692,10 @@ name = ["time"]
 values = ["-f", "--format", "-o", "--output"]
 attached = ["-f", "-o"]
 stop_at_operand = true
+# (GNU time 1.9's every option)
+strict = true
+switches = ["-a", "--append", "-p", "--portability", "-q", "--quiet", "-v", "--verbose", "-h", "--help", "-V",
+            "--version"]
 [spec.roles]
 "-o" = "write"
 "--output" = "write"

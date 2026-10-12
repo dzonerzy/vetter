@@ -1,0 +1,127 @@
+# The strictly read tools, as they're usually run: every option known.
+
+[[case]]
+id = "harmless-strict-gcc"
+shell = "bash"
+command = "gcc -O2 -Wall -Wextra -std=c11 -Iinclude -DNDEBUG -c src/a.c -o build/a.o"
+runs = ["gcc"]
+expect = "allow"
+why = "a compile in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-gcc-link"
+shell = "bash"
+command = "gcc -g -fsanitize=address -fno-omit-frame-pointer src/a.c -o app -lm -pthread"
+runs = ["gcc"]
+expect = "allow"
+why = "a debug build"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-clang"
+shell = "bash"
+command = "clang++ -std=c++20 -stdlib=libc++ -march=native -flto -MMD -MP -c x.cpp -o x.o"
+runs = ["clang++"]
+expect = "allow"
+why = "a compile in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-cc-shared"
+shell = "bash"
+command = "cc -shared -fPIC -o libx.so x.c -Wl,-soname,libx.so"
+runs = ["cc"]
+expect = "allow"
+why = "a shared library"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-java"
+shell = "bash"
+command = "java -Xmx2g -ea -XX:+UseG1GC -Dspring.profiles.active=dev -jar app.jar"
+runs = ["java"]
+expect = "allow"
+why = "the project's jar, sized"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-javac"
+shell = "bash"
+command = "javac -d out -Xlint:all -g -encoding UTF-8 --release 21 src/Main.java"
+runs = ["javac"]
+expect = "allow"
+why = "a compile in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-zip"
+shell = "bash"
+command = "zip -r9q site.zip public -x '*.map'"
+runs = ["zip"]
+expect = "allow"
+why = "the project's files in an archive"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-xz"
+shell = "bash"
+command = "xz -T0 -9 -k dump.sql && xz -dc dump.sql.xz | head"
+runs = ["xz", "head"]
+expect = "allow"
+why = "compressed in the project, kept"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-7z"
+shell = "bash"
+command = "7z a -mx9 -r site.7z public"
+runs = ["7z"]
+expect = "allow"
+why = "an archive of the project's files"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-npm-ci"
+shell = "bash"
+command = "npm ci --ignore-scripts --no-audit --loglevel warn"
+runs = ["npm"]
+expect = "allow"
+why = "the lockfile's packages, no scripts"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-npm-run"
+shell = "bash"
+command = "npm run build --silent -- --watch"
+runs = ["npm"]
+expect = "allow"
+why = "the project's script"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-tar"
+shell = "bash"
+command = "tar -czf dist.tgz --exclude=node_modules --exclude-vcs src docs && tar tzf dist.tgz"
+runs = ["tar"]
+expect = "allow"
+why = "the project's files in an archive in it"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-tar-extract"
+shell = "bash"
+command = "tar xzf vendor.tgz -C vendor --strip-components=1"
+runs = ["tar"]
+expect = "allow"
+why = "extracted into the project"
+source = "derived"
+
+[[case]]
+id = "harmless-strict-time"
+shell = "bash"
+command = "/usr/bin/time -v -o timing.txt make"
+runs = ["time", "make"]
+expect = "allow"
+why = "the timing in the project"
+source = "derived"

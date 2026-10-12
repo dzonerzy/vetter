@@ -9,13 +9,48 @@ name = ["gcc", "g++", "cc", "c++", "clang", "clang++", "cpp"]
 values = ["-o", "-x", "-I", "-L", "-D", "-U", "-include", "-imacros", "-isystem", "-iquote", "-idirafter", "-MF", "-MT",
           "-MQ", "-wrapper", "-B", "-specs", "--specs", "-fplugin", "-fpass-plugin", "-fuse-ld", "-T", "--sysroot",
           "-target", "--target", "-Xlinker", "-Xassembler", "-Xpreprocessor", "-Xclang", "-arch", "-e", "-u",
-          "--config", "--config-system-dir", "--config-user-dir"]
+          "--config", "--config-system-dir", "--config-user-dir", "--gcc-toolchain", "-ccc-install-dir",
+          "-resource-dir", "--param", "-mllvm", "-z", "-isysroot", "-imultilib", "-iprefix", "-iwithprefix",
+          "-iwithprefixbefore", "--ld-path"]
 single_dash_long = true
-attached = ["-o", "-B", "-MF"]
+attached = ["-o", "-B", "-MF", "-fprofile-generate=", "-fprofile-instr-generate=", "-fprofile-dir=",
+            "-foptimization-record-file=", "-fopt-info", "-fprofile-use=", "-fprofile-instr-use=",
+            "--gcc-toolchain=", "-ccc-install-dir="]
 response_files = true
 # (its sources: what it builds from)
 operands = "read"
+# (gcc's and clang's options by family; one outside them (-Xarch_..., what
+# a forwarding option gives another program) an Unknown)
+strict = true
+switches = ["-c", "-S", "-E", "-v", "-###", "-pipe", "-pthread", "-pthreads", "-shared", "-rdynamic", "-pie",
+            "-no-pie", "-s", "-w", "-ansi", "-r", "-C", "-CC", "-P", "-H", "-trigraphs", "-undef", "-time", "-Q",
+            "-x", "--version", "-dumpversion", "-dumpmachine", "-dumpfullversion", "-dumpspecs", "-nolibc",
+            "-nodefaultlibs", "-nostartfiles", "-nostdlib", "-nostdlib++", "-nostdinc", "-nostdinc++",
+            "-symbolic", "-integrated-as", "-no-integrated-as", "-emit-llvm", "-fsyntax-only", "-print-search-dirs",
+            "-print-libgcc-file-name", "-print-multiarch", "-print-multi-lib", "-print-multi-directory",
+            "-print-sysroot", "-print-resource-dir", "-print-target-triple", "-print-effective-triple",
+            "-print-targets", "-Qunused-arguments", "-Qn", "-Qy", "--help", "-help", "--verbose",
+            "-gline-tables-only", "-coverage", "--coverage", "-p", "-pg", "-municode", "-mwindows", "-mconsole"]
+families = ["-W", "-f", "-m", "-O", "-g", "-std=", "-D", "-U", "-I", "-L", "-l", "-M", "-print-file-name=",
+            "-print-prog-name=", "-save-temps", "-static", "-pedantic", "-traditional", "-d", "--help=", "-march",
+            "-mtune", "-mcpu", "-stdlib=", "-rtlib=", "-unwindlib=", "--rtlib", "--stdlib", "--target=", "-target",
+            "--sysroot=", "-gdwarf", "-gsplit", "-gz", "-Xclang", "-Xlinker", "-Xassembler",
+            "-Xpreprocessor", "-x", "-e", "-u", "-T", "-Ofast", "-Os", "-Oz", "-flto", "-fuse-ld="]
 [spec.roles]
+# (where the profile, the optimization records, -fopt-info's notes go)
+"-fprofile-generate=" = "write"
+"-fprofile-instr-generate=" = "write"
+"-fprofile-dir=" = "write"
+"-foptimization-record-file=" = "write"
+"-fopt-info" = "opt_info"
+"-fprofile-use=" = "read"
+"-fprofile-instr-use=" = "read"
+# (the toolchain whose as, ld it runs)
+"--gcc-toolchain" = "program_dir"
+"--gcc-toolchain=" = "program_dir"
+"-ccc-install-dir" = "program_dir"
+"-ccc-install-dir=" = "program_dir"
+"--ld-path" = "program"
 "-o" = "write"
 "-MF" = "write"
 "-include" = "read"
@@ -67,16 +102,35 @@ operands = "read"
 
 [[spec]]
 name = ["java", "javaw"]
-values = ["-cp", "-classpath", "--class-path", "-p", "--module-path", "-m", "--module", "-jar", "--source"]
+values = ["-cp", "-classpath", "--class-path", "-p", "--module-path", "-m", "--module", "-jar", "--source",
+          "--upgrade-module-path", "--patch-module", "-d", "--describe-module", "--add-modules",
+          "--enable-native-access", "--add-reads", "--add-exports", "--add-opens", "--limit-modules"]
 single_dash_long = true
 stop_at_operand = true
-attached = ["-javaagent:", "-agentpath:", "-agentlib:", "-Xbootclasspath/a:", "-Xbootclasspath/p:", "-Xlog:", "-XX:",
+attached = ["-javaagent:", "-agentpath:", "-agentlib:", "-Xbootclasspath/a:", "-Xbootclasspath/p:", "-Xbootclasspath:",
+            "-Xlog:", "-Xloggc:", "-XX:", "-splash:",
             "-Djava.security.manager=", "-Djava.system.class.loader=", "-Djava.library.path=",
             "-Djdk.module.path=", "-Djava.class.path=", "-Djava.ext.dirs=", "-Djava.endorsed.dirs="]
 response_files = true
 # (its main class, or a .java source run; then the program's arguments)
 operands = ["java_main", "plain*"]
+# (OpenJDK 21's -help and -X: every option)
+strict = true
+switches = ["--list-modules", "--dry-run", "--validate-modules", "-version", "--version", "-showversion",
+            "--show-version", "--show-module-resolution", "-?", "-h", "-help", "--help", "-X", "--help-extra",
+            "-esa", "-enablesystemassertions", "-dsa", "-disablesystemassertions", "-disable-@files",
+            "--enable-preview", "-Xbatch", "-Xcomp", "-Xdebug", "-Xdiag", "-Xfuture", "-Xint", "-Xinternalversion",
+            "-Xmixed", "-Xnoclassgc", "-Xrs", "-zero", "-dcevm", "-server", "-client", "-d64"]
+# (-D's properties (the ones that load code: roles above), heap and stack
+# sizes, assertions, settings shown, checks)
+families = ["-D", "-Xms", "-Xmx", "-Xmn", "-Xss", "-Xverify", "-Xshare", "-XshowSettings", "-Xcheck:", "-verbose",
+            "-ea", "-enableassertions", "-da", "-disableassertions"]
 [spec.roles]
+"-Xbootclasspath:" = "classpath"
+"-Xloggc:" = "write"
+"-splash:" = "read"
+"--upgrade-module-path" = "classpath"
+"--patch-module" = "module_patch"
 "-Xlog:" = "java_log"
 "-XX:" = "java_xx"
 "-Djava.library.path=" = "classpath"
@@ -102,14 +156,39 @@ operands = ["java_main", "plain*"]
 name = ["javac"]
 values = ["-d", "-s", "-h", "-cp", "-classpath", "--class-path", "-sourcepath", "--source-path", "-processorpath",
           "--processor-path", "-processor", "-p", "--module-path", "-encoding", "--release", "-source", "-target",
-          "-implicit", "-Xplugin"]
+          "-implicit", "-Xplugin", "--add-modules", "--boot-class-path", "-bootclasspath", "-endorseddirs",
+          "-extdirs", "--limit-modules", "--module", "-m", "--module-source-path", "--module-version",
+          "--processor-module-path", "-profile", "--system", "--upgrade-module-path", "--add-exports", "--add-reads",
+          "--default-module-for-created-files", "--doclint-format", "--patch-module", "-Xmaxerrs", "-Xmaxwarns",
+          "-Xstdout"]
 single_dash_long = true
-attached = ["-Xplugin:", "-J"]
+attached = ["-Xplugin:", "-J", "-Xbootclasspath:", "-Xbootclasspath/a:", "-Xbootclasspath/p:",
+            "-Djava.endorsed.dirs=", "-Djava.ext.dirs="]
 response_files = true
 operands = "read"
+# (OpenJDK 21's -help and -X: every option)
+strict = true
+switches = ["-deprecation", "--enable-preview", "-g", "--help", "-help", "-?", "--help-extra", "-X", "-nowarn",
+            "-parameters", "-verbose", "--version", "-version", "-Werror", "-Xprint", "-XprintProcessorInfo",
+            "-XprintRounds"]
+families = ["-A", "-g:", "-implicit:", "-proc:", "-Xdiags:", "-Xdoclint", "-Xlint", "-Xpkginfo:", "-Xprefer:"]
 [spec.roles]
 # (-J-agentpath:...: the options of the JVM javac runs in)
 "-J" = "options:java"
+"-Xstdout" = "write"
+"--system" = "program_dir"
+"--boot-class-path" = "classpath"
+"-bootclasspath" = "classpath"
+"-endorseddirs" = "classpath"
+"-extdirs" = "classpath"
+"--processor-module-path" = "classpath"
+"--upgrade-module-path" = "classpath"
+"--patch-module" = "module_patch"
+"-Xbootclasspath:" = "classpath"
+"-Xbootclasspath/a:" = "classpath"
+"-Xbootclasspath/p:" = "classpath"
+"-Djava.endorsed.dirs=" = "classpath"
+"-Djava.ext.dirs=" = "classpath"
 "-d" = "write"
 "-s" = "write"
 "-h" = "write"

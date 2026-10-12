@@ -34,6 +34,14 @@ class Spec:
         self.response_files = data.get("response_files", False)
         # (options giving what the first operand is otherwise: grep -e)
         self.pattern_options = list(data.get("pattern_options", []))
+        # (strict: an option not listed is an Unknown; switches: options
+        # with no value known to change nothing; families: prefixes whose
+        # options do (-W..., -Xmx...))
+        # (true: for each of its names; a list: for those)
+        strict = data.get("strict", False)
+        self.strict = set(self.names) if strict is True else set(strict or [])
+        self.switches = set(data.get("switches", []))
+        self.families = list(data.get("families", []))
         self.config = {k.lower(): v for k, v in data.get("config", {}).items()}
         self.sub = {k: Spec(v) for k, v in data.get("sub", {}).items()}
         # (every subcommand it has, those with roles or not: for the

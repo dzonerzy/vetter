@@ -46,11 +46,69 @@ name = ["npm", "pnpm", "yarn", "bun"]
 subcommands = true
 # (options before the subcommand taking a value)
 values = ["--prefix", "--dir", "--cwd", "-C", "--userconfig", "--globalconfig", "--script-shell", "--node-options",
-          "-w", "--workspace", "--filter", "--registry", "--cache", "--loglevel"]
+          "-w", "--workspace", "--filter", "--registry", "--cache", "--loglevel", "--access", "--audit-level",
+          "--auth-type", "--before", "--browser", "--ca", "--cache-max", "--cache-min", "--cafile", "--call", "-c",
+          "--cert", "--cidr", "--cpu", "--depth", "--diff", "--diff-dst-prefix", "--diff-src-prefix",
+          "--diff-unified", "--editor", "--expect-result-count", "--expires", "--git", "--heading", "--https-proxy",
+          "--include", "--install-strategy", "--key", "--libc", "--local-address", "--location", "-L",
+          "--lockfile-version", "--logs-dir", "--logs-max", "--maxsockets", "--message", "-m", "--min-release-age",
+          "--node-gyp", "--noproxy", "--omit", "--os", "--otp", "--pack-destination", "--password", "--preid",
+          "--provenance-file", "--proxy", "--replace-registry-host", "--save-prefix", "--sbom-format",
+          "--sbom-type", "--scope", "--searchexclude", "--searchlimit", "--searchopts", "--searchstaleness",
+          "--shell", "--tag", "--tag-version-prefix", "--token-description", "--umask", "--user-agent", "--viewer",
+          "--init-module", "--only", "--also"]
+# (npm 11's config, `npm config ls -l`: every setting; pnpm, yarn, bun have
+# their own)
+strict = ["npm"]
+switches = ["--all", "-a", "--allow-same-version", "--audit", "--bin-links", "--bypass-2fa", "--color",
+            "--commit-hooks", "--description", "--dev", "--diff-ignore-all-space", "--diff-name-only",
+            "--diff-no-prefix", "--diff-text", "--dry-run", "--engine-strict", "--expect-results", "--force", "-f",
+            "--foreground-scripts", "--format-package-lock", "--fund", "--git-tag-version", "--global", "-g",
+            "--global-style", "--if-present", "--ignore-scripts", "--include-attestations", "--include-staged",
+            "--include-workspace-root", "--install-links", "--json", "--legacy-bundling", "--legacy-peer-deps",
+            "--link", "--long", "-l", "--offline", "--omit-lockfile-registry-resolved", "--optional",
+            "--package-lock", "--package-lock-only", "--packages-all", "--parseable", "-p", "--prefer-dedupe",
+            "--prefer-offline", "--prefer-online", "--production", "--progress", "--provenance", "--read-only",
+            "--rebuild-bundle", "--save", "-S", "--save-bundle", "-B", "--save-dev", "-D", "--save-exact", "-E",
+            "--save-optional", "-O", "--save-peer", "--save-prod", "-P", "--shrinkwrap", "--sign-git-commit",
+            "--sign-git-tag", "--strict-peer-deps", "--timing", "--unicode", "--update-notifier",
+            "--usage", "--version", "-v", "--versions", "--which", "--workspaces", "-ws", "--workspaces-update",
+            "--yes", "-y", "--silent", "-s", "--quiet", "-q", "--verbose", "-d", "-dd", "-ddd", "--help", "-h",
+            "-?", "--loglevel", "--name", "--packages", "--orgs", "--allow-directory", "--allow-file",
+            "--allow-git", "--allow-remote", "--packages-and-scopes-permission", "--orgs-permission", "--init-private",
+            "--init-type", "--init-version", "--init-license", "--init-author-name", "--init-author-email",
+            "--init-author-url", "--npm-version", "--cache-max", "--depth", "--"]
+families = ["--no-", "--init.", "--fetch-", "--save-", "--diff-", "--search", "--allow-", "--sbom-", "--audit"]
 [spec.anywhere]
 "-C" = "project"
 "--script-shell" = "program"
 "--node-options" = "configured"
+# (programs npm runs: a shell for `exec -c`, a browser, an editor, git,
+# node-gyp, a viewer; code `init` runs)
+"--call" = "shell"
+"-c" = "shell"
+"--shell" = "program"
+"--browser" = "program"
+"--editor" = "shell"
+"--git" = "program"
+"--node-gyp" = "program"
+"--viewer" = "program"
+"--init-module" = "code_file"
+# (where packages come from, how they're trusted: what's installed and run)
+"--registry" = "configured"
+"--replace-registry-host" = "configured"
+"--cache" = "configured"
+"--ca" = "configured"
+"--cafile" = "configured"
+"--cert" = "configured"
+"--key" = "configured"
+"--proxy" = "configured"
+"--https-proxy" = "configured"
+"--local-address" = "configured"
+"--strict-ssl" = "configured"
+"--no-strict-ssl" = "configured"
+"--logs-dir" = "write"
+"--pack-destination" = "write"
 # (the package it works on, its scripts: --prefix's, pnpm -C's, yarn --cwd's)
 "--prefix" = "project"
 "--dir" = "project"
@@ -82,16 +140,16 @@ operands = "package_script"
 [spec.sub.install]
 operands = "package"
 [spec.sub.install.flags]
-"install" = {reason = "runs the package's install scripts", kind = "package_script"}
+"install" = {reason = "runs the package's install scripts", kind = "package_script", unless = ["--ignore-scripts"]}
 [spec.sub.i]
 operands = "package"
 [spec.sub.i.flags]
-"i" = {reason = "runs the package's install scripts", kind = "package_script"}
+"i" = {reason = "runs the package's install scripts", kind = "package_script", unless = ["--ignore-scripts"]}
 [spec.sub.add]
 operands = "package"
 [spec.sub.ci]
 [spec.sub.ci.flags]
-"ci" = {reason = "runs the packages' install scripts", kind = "package"}
+"ci" = {reason = "runs the packages' install scripts", kind = "package", unless = ["--ignore-scripts"]}
 [spec.sub.publish]
 [spec.sub.publish.flags]
 "publish" = "publishes the package"

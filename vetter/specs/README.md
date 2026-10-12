@@ -17,6 +17,10 @@ stdin_program = false          # with no program operand, it runs its stdin (pyt
 attached = ["-o"]              # options whose value can be glued on (-oapp, -javaagent:x.jar)
 response_files = false         # @file is more arguments, read from it
 pattern_options = ["-e", "-f"] # given one, the first operand isn't a pattern: all have the role after it (grep)
+strict = true                  # every option listed (true, or a list of its names): one not listed is an
+                               # Unknown, not taken for nothing; a subcommand's options are its program's too
+switches = ["-q", "--json"]    # options with no value known to change nothing (a strict spec's)
+families = ["-W", "-Xmx"]      # prefixes whose options are known to (-Wall, -Xmx2g; -std= is -std's)
 [anywhere]                     # options before or after the subcommand (cargo --config)
 "--config" = "configured"
 
@@ -26,6 +30,7 @@ pattern_options = ["-e", "-f"] # given one, the first operand isn't a pattern: a
 
 [flags]                        # flags that make it run something set elsewhere
 "--ext-diff" = "runs diff.external or GIT_EXTERNAL_DIFF"
+# (or {reason = "...", kind = "...", unless = ["--ignore-scripts"]}: not with one of those)
 
 [sub.log]                      # a subcommand: the same keys
 values = ["--output"]
@@ -100,4 +105,8 @@ one only running tells, and what runs from there is `generated`.
 `program_args` is a command to run (the wrapper's). `ln`: each link written,
 what it points to read and written too (what's done through it is done to
 it). `make`: targets, and `VAR=value` (`SHELL=`, a value with shell code: an
-Unknown; `CC=./x`: an execution of it).
+Unknown; `CC=./x`: an execution of it). `tar`: its mode, archive and files
+(`czf ARCHIVE`, each file relative to the `-C` before it; created: the files
+read, the archive written; an archive on `HOST:`, through rsh, an Unknown).
+`compressed`: xz, gzip, bzip2 without `-c` / `-k`, each file written
+compressed beside it and deleted.
