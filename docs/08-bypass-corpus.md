@@ -99,24 +99,36 @@ leaves the command to the agent: for an attack, not stopped. Codex's
 execpolicy only checks the rules one writes, and the agents' own matchers
 don't run outside them: not here.
 
-2026-10-12, dcg at 00a1c8b, cc-safety-net 2.6.9:
+2026-10-12, dcg at f9e8748, cc-safety-net 2.6.10:
 
 | corpus | guard | attacks stopped | harmless stopped |
 |---|---|---|---|
-| vetter's (bash; gpt-obfuscated's harmless payload left out) | vetter | 326 / 326 (100%) | 0 / 67 |
-| | dcg | 94 / 326 (28.8%) | 4 / 67 |
-| | cc-safety-net | 74 / 326 (22.7%) | 3 / 67 |
-| dcg's own (`tests/corpus`, its home turf) | vetter | 292 / 299 (97.7%) | 157 / 394 (39.8%) |
-| | dcg | 210 / 299 (70.2%) | 3 / 394 (0.8%) |
-| | cc-safety-net | 131 / 299 (43.8%) | 21 / 394 (5.3%) |
+| vetter's (bash; gpt-obfuscated's harmless payload left out) | vetter | 377 / 377 (100%) | 0 / 97 |
+| | dcg | 125 / 377 (33.2%) | 5 / 97 |
+| | cc-safety-net | 95 / 377 (25.2%) | 3 / 97 |
+| dcg's own (`tests/corpus`, its home turf) | vetter | 265 / 281 (94.3%) | 107 / 383 (27.9%) |
+| | dcg | 192 / 281 (68.3%) | 3 / 383 (0.8%) |
+| | cc-safety-net | 131 / 281 (46.6%) | 21 / 383 (5.5%) |
 
 Read with care: vetter's corpus is vetter's (every case it missed was
 fixed); dcg and cc-safety-net only mean to stop destruction (and secrets),
-much of vetter's corpus is outside that. On dcg's corpus, vetter's 7 misses
-are the stock policy's choices (`rm -rf ./build`: build output; deleting in
-$temp), its "harmless stopped" its default: a program no rule names is
-asked about (`az`, `gh`, `vault`, dcg's made-up names), where dcg says
-nothing; a policy that names them doesn't ask.
+much of vetter's corpus is outside that.
+
+On dcg's corpus, the attacks vetter allows are counted apart (the report
+says which): each read whole and allowed by a rule of the stock policy
+(where it and dcg's labels differ), or with a part vetter couldn't read (a
+miss). All 16 are the first: `git branch -d` of a merged branch (6: git
+refuses an unmerged one, `-D` is asked), `rm -rf ./build` (5: build
+output), deleting in $temp (3), `echo ok \& ...` (bash prints it). What
+dcg misses (89) and cc-safety-net (150) are commands they don't see.
+
+vetter's "harmless stopped" is its default: a program no rule names is
+asked about (dcg's made-up names, `cogito ergo sum`; `vault`), as are
+deleting and moving files in the project; a policy that names them
+doesn't ask. dcg's corpus asked 39.8% of its harmless commands before
+the stock policy allowed what forges and clouds hold read (`gh pr list`,
+`az account show`, `kubectl get`), `--help` and `--version`, and before
+text in the command sent (`curl -d 'a=1'`) was no longer local data.
 
 What running dcg's corpus found in vetter, fixed: the stock policy allowed
 git that throws work away (`reset --hard`, `branch -D`, `stash drop`,

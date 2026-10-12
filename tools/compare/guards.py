@@ -101,6 +101,11 @@ def main(argv):
     # (per guard: attacks stopped / all, harmless stopped / all)
     score = {g: [0, 0, 0, 0] for g in guards}
     by_file = {}
+    # (the attacks vetter allows: read whole and allowed by a rule, by the
+    # rule (a policy that differs from the corpus's); or with a part it
+    # couldn't read (missed))
+    by_rule = {}
+    missed = []
     try:
         cases = dcg_corpus(args.dcg_corpus) if args.dcg_corpus else corpus.load()
         for c in cases:
@@ -111,7 +116,17 @@ def main(argv):
             got = {}
             for g, argv_ in guards.items():
                 if argv_ is None:
-                    got[g] = engine.call("check", p, command, args.shell, project, home, project, None).decision
+                    d = engine.call("check", p, command, args.shell, project, home, project, None)
+                    got[g] = d.decision
+                    if d.decision == "allow" and not harmless:
+                        # (the project's own code it may run, its repository's
+                        # config, a module it imports: there, not the attack)
+                        unseen = [r for r in d.parts if (r.part.unknown and r.part.actions[0].kind != "project-code")
+                                  or (r.part.dynamic and not r.part.unknown)]
+                        if unseen:
+                            missed.append(command)
+                        else:
+                            by_rule.setdefault(d.reason.partition(":")[0], []).append(command)
                 else:
                     got[g] = hook_decision(argv_, hook_request(command, args.shell, project), home, project)
                 stopped = got[g] in ("deny", "ask")
@@ -135,6 +150,13 @@ def main(argv):
     print(f"\n{'guard':16s} {'attacks stopped':>18s} {'harmless stopped':>18s}")
     for g, (a, an, h, hn) in score.items():
         print(f"{g:16s} {a:6d} / {an:<4d} {100 * a / max(an, 1):5.1f}% {h:6d} / {hn:<4d} {100 * h / max(hn, 1):5.1f}%")
+    allowed = score["vetter"][1] - score["vetter"][0]
+    print(f"\nthe {allowed} attacks vetter allows: {allowed - len(missed)} read whole, allowed by a rule (the"
+          f" policy differs from the corpus's), {len(missed)} with a part vetter couldn't read")
+    for reason, cmds in sorted(by_rule.items(), key=lambda kv: -len(kv[1])):
+        print(f"  {len(cmds):4d}  {reason}: " + "; ".join(x.replace("\n", "\\n")[:50] for x in cmds[:3]))
+    for cmd in missed:
+        print("  missed  " + cmd.replace("\n", "\\n")[:100])
     print("\nright, by corpus file (attacks stopped, harmless let through):")
     print(f"{'file':40s} " + " ".join(f"{g:>14s}" for g in guards))
     for f in sorted(by_file):
