@@ -134,6 +134,8 @@ class Unknown:
     kind: str
     paths: list
     cwd: object
+    # (the program whose project's code it is: make, git; "" none)
+    program: str = ""
 
 
 @dataclass

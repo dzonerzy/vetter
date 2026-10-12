@@ -25,7 +25,7 @@ commands = ["add", "am", "annotate", "apply", "archive", "bisect", "blame", "bra
 "--work-tree" = "project"
 
 [flags]
-"git" = {reason = "runs what the repository's config names", kind = "project_code"}
+"git" = {reason = "runs what the repository's config names", kind = "repo_config"}
 
 # Config keys whose value runs something (lowercase; `*` matches a part)
 [config]

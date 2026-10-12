@@ -847,7 +847,10 @@ def match_action(pl, verb, obj, a):
             return match_path(pl, a, "inside", obj[2])
         # (run PLACES: a program or a script found there, the command's own
         # too)
-        if a.kind is not None and not ((a.kind == "script" or a.kind == "generated") and obj is not None):
+        # (a folder a tool works on, written or not: not a program found in
+        # a place, `run in $temp`)
+        if a.kind is not None and not ((a.kind == "script" or a.kind == "generated") and obj is not None
+                                       and not a.folder):
             return Why(False, "it runs " + a.kind + ", not a program" if pl.trace else "")
     if obj is None:
         return Why(True, verb + " " + (a.path if nonempty(a.path) else (a.host if nonempty(a.host) else a.text)))
@@ -1092,14 +1095,19 @@ def decide(p, resolution, project, home, temp):
         for a in part.actions:
             # (written by an earlier command: as if by this one)
             plain = a.kind is None or a.kind == "script" or a.kind == "project-code"
-            if a.verb == "run" and plain and a.path is not None and a.path in p.written:
+            if a.verb == "run" and plain and a.path is not None and a.path in p.written and not a.folder:
                 a.kind = p.written[a.path]
             elif a.verb == "run" and a.kind == "project-code" and a.path is not None:
                 # (make after the agent wrote the Makefile: what it runs, the
                 # agent's)
                 for f, kind in p.written.items():
-                    if defines(f, a.path):
+                    if defines(f, a.path, part.what.program if part.unknown else ""):
                         a.kind = kind
+        if p.follow_links and part.unknown and part.what.kind == "repo_config" \
+                and part.actions[0].kind == "project-code":
+            # (git's repository config, read here: what it runs, the git
+            # execution's actions (machine_actions); none, nothing unknown)
+            continue
         decided = [decide_action(p, pl, part, a) for a in part.actions]
         run_by_effects(part, decided)
         # (the strictest; among equals, the action itself before "by what

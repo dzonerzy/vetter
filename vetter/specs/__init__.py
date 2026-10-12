@@ -508,6 +508,8 @@ def apply_specs(rt, w, e, ctx):
     environment run. The project's code it runs (make's recipes, npm's
     scripts, the tests) is where it works on: the folder -C, --prefix name,
     or where it runs."""
+    from ..shells.bash.resolve import exec_name
+
     first = len(w.r.unknowns)
     spec_roles(rt, w, e, ctx)
     marked = [r for r in e.roles if r.role == "delete_read"]
@@ -522,11 +524,13 @@ def apply_specs(rt, w, e, ctx):
     where = None
     for k in range(first, len(w.r.unknowns)):
         u = w.r.unknowns[k]
-        if (u.kind == "project_code" or u.kind == "package_script") and len(u.paths) == 0:
+        if (u.kind == "project_code" or u.kind == "package_script" or u.kind == "repo_config") \
+                and len(u.paths) == 0:
             if where is None:
                 where = project_dirs(e)
             for d in where:
                 u.paths.append(d)
+            u.program = str(exec_name(e))
 
 
 def extraction(e):

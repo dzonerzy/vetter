@@ -22,6 +22,7 @@ RUN_KINDS = {
     "code": "unknown", "lookup_path": "unknown", "code_file": "script", "downloaded_code": "downloaded",
     "package": "package", "package_script": "project-code", "project_code": "project-code",
     "inline_code": "inline", "configured": "configured", "persistent": "configured", "env_code": "injected",
+    "repo_config": "project-code",
 }
 QUIET = {"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "/dev/zero", "/dev/random", "/dev/urandom"}
 
@@ -34,6 +35,8 @@ class Action:
     kind: object
     # (the value as written, for traces)
     text: str
+    # (the folder a tool works on, its path: not a program found there)
+    folder: bool = False
 
 
 def action_text(a):
@@ -202,42 +205,72 @@ def generated(parts):
         for a in p.actions:
             # (downloaded, injected, ...: what's worse about it kept)
             plain = a.kind is None or a.kind == "script" or a.kind == "project-code"
-            if a.verb == "run" and plain and a.path is not None and a.path in written:
+            if a.verb == "run" and plain and a.path is not None and a.path in written and not a.folder:
                 a.kind = "generated"
             elif a.verb == "run" and a.kind == "project-code" and a.path is not None:
                 # (make -C d after writing d/Makefile: what it runs, written)
                 for f in written:
-                    if defines(f, a.path):
+                    if defines(f, a.path, p.what.program if p.unknown else ""):
                         a.kind = "generated"
 
 
 # The files that say what a tool on a folder runs: its build's, its tests',
 # its package's scripts, the repository's config and hooks
-DEFINITIONS = {"Makefile", "makefile", "GNUmakefile", "build.ninja", "CMakeLists.txt", "CMakePresets.json",
+DEFINITIONS = ("Makefile", "makefile", "GNUmakefile", "build.ninja", "CMakeLists.txt", "CMakePresets.json",
                "CMakeUserPresets.json", "conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini",
                "setup.py", "package.json", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs", "Cargo.toml",
                "build.rs", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
                "gradle.properties", "pom.xml", "build.zig", "build.zig.zon", "go.mod", "go.work", "Dockerfile",
-               "Containerfile", "Rakefile", "Gemfile", "noxfile.py", "Justfile", "justfile", "Taskfile.yml"}
+               "Containerfile", "Rakefile", "Gemfile", "noxfile.py", "Justfile", "justfile", "Taskfile.yml")
 # (in these folders, any file: .cargo/config.toml, .git/config, .git/hooks/*)
 DEFINITION_DIRS = ("/.git/", "/.cargo/", "/.mvn/", "/.gradle/", "/.husky/")
 
 
-def defines(path, folder):
-    """Is the file one that says what a tool on the folder runs: in the
-    folder or below it, or above it (a workspace's, the repository's)?"""
+# Each tool's own: the files and folders saying what it runs (another tool's,
+# a pyproject.toml for git, nothing to it); a tool not here, any of them
+TOOL_DEFINITIONS = {
+    "git": ((), ("/.git/",)),
+    "make": (("Makefile", "makefile", "GNUmakefile"), ()),
+    "gmake": (("Makefile", "makefile", "GNUmakefile"), ()),
+    "ninja": (("build.ninja",), ()),
+    "cmake": (("CMakeLists.txt", "CMakePresets.json", "CMakeUserPresets.json"), ()),
+    "cargo": (("Cargo.toml", "build.rs"), ("/.cargo/",)),
+    "npm": (("package.json", ".npmrc"), ()),
+    "pnpm": (("package.json", ".npmrc", ".pnpmfile.cjs"), ()),
+    "yarn": (("package.json", ".npmrc", ".yarnrc", ".yarnrc.yml"), ()),
+    "bun": (("package.json", ".npmrc", "bunfig.toml"), ()),
+    "pytest": (("conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini"), ()),
+    "py.test": (("conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini"), ()),
+    "gradle": (("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties"),
+               ("/.gradle/",)),
+    "mvn": (("pom.xml",), ("/.mvn/",)),
+    "zig": (("build.zig", "build.zig.zon"), ()),
+    "go": (("go.mod", "go.work"), ()),
+    "docker": (("Dockerfile", "Containerfile"), ()),
+}
+
+
+def defines(path, folder, tool):
+    """Is the file one that says what the tool (any, "") on the folder
+    runs: in the folder or below it, or above it (a workspace's, the
+    repository's)?"""
     parent, _, leaf = path.rpartition("/")
+    leaves = DEFINITIONS
+    dirs = DEFINITION_DIRS
+    if tool in TOOL_DEFINITIONS:
+        leaves = TOOL_DEFINITIONS[tool][0]
+        dirs = TOOL_DEFINITIONS[tool][1]
     special = False
-    for d in DEFINITION_DIRS:
+    for d in dirs:
         if d in path + "/" and d not in folder + "/":
             special = True
-    if leaf not in DEFINITIONS and not special:
+    if leaf not in leaves and not special:
         return False
     here = folder.rstrip("/") + "/"
     if path.startswith(here):
         return True
     top = parent
-    for d in DEFINITION_DIRS:
+    for d in dirs:
         k = (path + "/").find(d)
         if k >= 0 and k < len(top):
             top = path[:k]
@@ -295,7 +328,7 @@ def execution_part(e, home):
 def unknown_part(u):
     kind = RUN_KINDS[u.kind] if u.kind in RUN_KINDS else "unknown"
     found = [absolute(u.cwd, f) for f in u.paths]
-    actions = [Action("run", found[0] if len(found) > 0 else None, None, kind, u.reason)]
+    actions = [Action("run", found[0] if len(found) > 0 else None, None, kind, u.reason, kind == "project-code")]
     return Part(u, None, [], set(), actions, u.via, u.span, True, u.reason, None, True, [], False)
 
 

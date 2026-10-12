@@ -293,6 +293,14 @@ def test_what_this_machine_says(program, policy, own_home):
         assert decision(out) == "ask" and "core.fsmonitor" in out["hookSpecificOutput"]["permissionDecisionReason"]
         out = json.loads(answer(program, "claude", json.dumps(claude_req("git status", cwd=str(clean))), policy, mode))
         assert decision(out) == "allow"
+        # (another repository, its config read here: one running nothing,
+        # nothing to ask; one naming a program, asked)
+        other = "git -C " + str(clean) + " log -1 && git -C " + str(repo) + " status"
+        out = json.loads(answer(program, "claude", json.dumps(claude_req("git -C " + str(clean) + " log -1")), policy,
+                                mode))
+        assert decision(out) == "allow", out
+        out = json.loads(answer(program, "claude", json.dumps(claude_req(other)), policy, mode))
+        assert decision(out) == "ask" and "core.fsmonitor" in out["hookSpecificOutput"]["permissionDecisionReason"]
     state = own_home / ".local" / "state" / "vetter" / "written.tsv"
     for mode in ("python", "compiled"):
         if state.exists():
