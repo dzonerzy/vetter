@@ -17,7 +17,7 @@ The executable and the library are compiled ahead of time by
 Building needs Zig, through the `ziglang` package:
 
 ```console
-$ pip install '.[build]'
+$ pip install 'vetter[build]'
 $ python -m vetter.build vetter-hook     # ./vetter-hook claude [--policy FILE]
 $ python -m vetter.build libvetter       # libvetter.so and libvetter.h
 ```

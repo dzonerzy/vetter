@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-13
+
+The first published release.
+
+### Added
+- **Python read and followed**: the code given to `python -c`, or to
+  python on its stdin (a here-document, `echo ... |`), is parsed (Python
+  3.8-3.13, checked against CPython's parser on the standard library) and
+  evaluated abstractly: what it reads, writes and deletes, the commands it
+  runs (`os.system`, `subprocess`, `os.exec*`, resolved as shell commands,
+  with the folder, environment and input it gives them), where it connects.
+  Both ways of a branch, loops until their values settle, exceptions, early
+  returns, closures and shared lists followed; what it can't follow
+  (`eval`, `exec`, `__import__`, `ctypes`, third-party calls) asked.
+  Programs built to mislead it, run for real (`tools/oracle/pyfuzz.py`):
+  none did more than vetter allowed.
+- **`vetter learn`**: rules from the asks you said yes to. The hook logs
+  each call's id and, through a `PostToolUse` hook (Claude Code, Codex),
+  that it ran; `vetter learn` suggests the narrowest rule for each
+  (a program and its subcommands, a host, a folder), never from what vetter
+  couldn't see, an ask made on purpose, or a rule that would allow what you
+  said no to. `--apply` adds them to your policy.
+- **Known paths where they were unknown**: `find -exec`'s `{}` is a file
+  under its starting point, `xargs` fed by `echo` gets its words (`-i`,
+  `-I` in place), PowerShell's `foreach` over constant strings binds its
+  variable, `$_` from `Get-ChildItem PATH` is a file under PATH.
+- **The stock policy**: read-only `gh`, `az`, `bq` and `kubectl`
+  subcommands allowed; any program with `--help` or `--version` (its run
+  only); `git branch -d` (`-D` still asked).
+- **Documentation** rewritten for readers (`docs/`), a logo, the corpus'
+  own README.
+- `tools/compare/guards.py` tells the attacks vetter allows by policy from
+  the ones it couldn't read; `tests/test_corpus.py` decides the corpus in
+  both of zrun's modes.
+
+### Changed
+- **A path only running tells is asked about, not denied**: `rm -rf "$X"`
+  no longer matches `deny delete outside $project` (an unknown path isn't
+  known to be outside); it still keeps an allow from applying.
+- **Data written in the command isn't local data sent out**:
+  `curl -d 'a=1'` is the network's rule (asked); a file (`-d @f`, `-F
+  k=@f`, `-T f`), a pipe or a value only running tells is still denied.
+- **Python's network isn't python's own**: a rule allowing `python3`
+  doesn't cover the connections its `-c` code makes.
+- **`curl ... | python3 -c CODE`** isn't "a download piped into a shell":
+  the code is read, and what it does with its input decided (a shell fed
+  from it, `exec` of it, a file it writes then run: still denied).
+- vetter is licensed under Apache-2.0, the corpus under CC BY 4.0.
+- zrun 0.7.4 or later.
+
+### Fixed
+- `vetter why` printed an execution's `(via ...)` twice.
+
 ## [0.1.0] - 2026-10-12
 
 The first release (tagged, not published): vetter vets every command an AI

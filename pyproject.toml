@@ -4,13 +4,25 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vetter"
-version = "0.1.0"
-description = "Vets every command your AI agent wants to run: bash read exactly as bash reads it, decided by a policy."
+version = "0.2.0"
+description = "Vets every command your AI agent wants to run: bash, PowerShell, cmd.exe and inline Python read as they run, decided by a policy you can test."
 requires-python = ">=3.11"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Daniele Linguaglossa" }]
+keywords = ["ai-agents", "security", "shell", "bash", "powershell", "policy", "claude-code", "codex", "guardrails"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Security",
+    "Topic :: System :: Shells",
+]
 # (zrun: vetter is its strict subset, run by it; 0.7.2: native I/O, node.find,
 # Unicode isalnum; 0.7.3: a helper's change to its caller's list compiled
 # right; 0.7.4: a known dict or list in a helper's try body. zgram: the
@@ -31,6 +43,20 @@ addopts = "-n auto --dist loadfile"
 
 [project.scripts]
 vetter = "vetter.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/dzonerzy/vetter"
+Documentation = "https://github.com/dzonerzy/vetter/tree/main/docs"
+Changelog = "https://github.com/dzonerzy/vetter/blob/main/CHANGELOG.md"
+Issues = "https://github.com/dzonerzy/vetter/issues"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "UP"]
+ignore = ["E501"]
 
 [tool.hatch.build.targets.wheel]
 # (the specs' .toml and the policies' .vet go with it)

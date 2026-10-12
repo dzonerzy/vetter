@@ -2,12 +2,14 @@
 
 ## Install
 
-vetter needs Python 3.11 or later. From a checkout of the repository:
+vetter needs Python 3.11 or later:
 
 ```console
-$ pip install .
+$ pip install vetter
 $ vetter --version
 ```
+
+From a checkout of the repository, `pip install .` does the same.
 
 This installs the `vetter` command line and its dependencies (zrun, zgram
 and zrules, from the zsuite toolkit).

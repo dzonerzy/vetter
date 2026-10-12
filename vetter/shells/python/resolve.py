@@ -905,7 +905,8 @@ def delete(rt, py, node):
         obj = primary_upto(rt, py, node, len(k) - 1)
         last = k[len(k) - 1]
         if last.rule == "subscript":
-            key = subscript_key(rt, py, last)
+            # (the key evaluated: what it calls, followed)
+            subscript_key(rt, py, last)
             if obj.kind == "attr" and obj.text == "os.environ":
                 return
             if obj.kind == "list" or obj.kind == "dict" or obj.kind == "set":

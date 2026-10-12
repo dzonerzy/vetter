@@ -75,7 +75,7 @@ guess: it asks.
 ## Quick start
 
 ```console
-$ pip install .                    # from a checkout; Python 3.11+
+$ pip install vetter               # Python 3.11+
 $ vetter check 'rm -rf ~'          # try it
 $ vetter install claude            # or codex, gemini, cursor, copilot, vscode, cline, amp, opencode
 ```

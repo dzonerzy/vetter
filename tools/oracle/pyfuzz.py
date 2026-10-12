@@ -120,8 +120,8 @@ def program(rng, kind, chain):
         choices = [t for t in TEMPLATES if not (t[0] in STR_ONLY and not isinstance(harmful, str))]
         name, text, holds = rng.choice(choices)
         if k > 0 and holds == "H":
-            lines.append("h%d = v" % k)
-            h = "h%d" % k
+            lines.append(f"h{k} = v")
+            h = f"h{k}"
         elif k > 0:
             really = "S"
         if k == 0:
