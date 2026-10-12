@@ -125,9 +125,12 @@ system's; a cargo alias of the subcommand, `[env]`, is `run configured`.
 Places:
 
 - **`$project`, `$home`, `$temp`**: what vetter knows when it decides, not
-  paths: the project the agent works in (the nearest folder up from its
-  working directory with a `.git` or a `.vetter.vet`, never the home itself;
-  else the working directory), the user's home (`~` too), the
+  paths: the project the agent works in (the workspace it was opened in, as
+  it tells its hooks: Claude Code's `CLAUDE_PROJECT_DIR`, Cursor's and
+  Copilot's workspace roots, when the command runs in it; else, or if a
+  repository holds it, the nearest folder up from its working directory
+  with a `.git` or a `.vetter.vet`; never the home itself; else the working
+  directory), the user's home (`~` too), the
   temporary directories (`/tmp`, `/var/tmp`, `C:/Windows/Temp`,
   `~/AppData/Local/Temp`, and the machine's `TMPDIR`, `TEMP`, `TMP`). The `$`
   says so: `$project/.git/hooks` is that project's hooks, wherever it is.
