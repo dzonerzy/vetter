@@ -318,15 +318,7 @@ def record_call(rt, agent, cwd, command, decision, path, ident, project):
 
 def record_ran(rt, agent, ident, path):
     """The call with this id ran (after an ask: the user said yes)."""
-    line = dumps({"time": int(time()), "agent": agent, "ran": ident}) + "\n"
-    try:
-        new = not exists(path)
-        makedirs(parent_of(path), 0o700, True)
-        open(path, "a", encoding="utf-8").write(line)
-        if new:
-            chmod(path, 0o600)
-    except OSError:
-        pass
+    append(rt, path, {"time": int(time()), "agent": agent, "ran": ident})
 
 
 def append(rt, path, entry):

@@ -11,13 +11,13 @@ readme = "README.md"
 authors = [{ name = "Daniele Linguaglossa" }]
 # (zrun: vetter is its strict subset, run by it; 0.7.2: native I/O, node.find,
 # Unicode isalnum; 0.7.3: a helper's change to its caller's list compiled
-# right. zgram: the grammars, as zrun 0.7 needs it; zrules: the policies'
-# checks)
-dependencies = ["zrun-py>=0.7.3,<0.8", "zgram-py>=0.6,<0.7", "zrules-py>=0.2.0,<0.3"]
+# right; 0.7.4: a known dict or list in a helper's try body. zgram: the
+# grammars, as zrun 0.7 needs it; zrules: the policies' checks)
+dependencies = ["zrun-py>=0.7.4,<0.8", "zgram-py>=0.6,<0.7", "zrules-py>=0.2.0,<0.3"]
 
 [project.optional-dependencies]
 # (vetter.build: the hook as an executable, libvetter)
-build = ["zrun-py[exe]>=0.7.3,<0.8"]
+build = ["zrun-py[exe]>=0.7.4,<0.8"]
 # (the tests: in parallel, a file a worker)
 test = ["pytest>=8", "pytest-xdist>=3"]
 
