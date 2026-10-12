@@ -40,7 +40,7 @@ vetter is the boundary there is.
 
 ```
 vetter/                  the package: zrun's strict subset of Python (docs/10-native.md)
-  cli.py                 vetter check | why | test | lint | import | replay | hook | install
+  cli.py                 vetter check | why | test | lint | import | replay | learn | hook | install
   engine.py              vetter's code run by zrun: as Python (the CLI), compiled (tests, build.py)
   build.py               the hook as an executable, libvetter (.so, .dll): no Python in them
   check.py               a command: parse, resolve, decide
@@ -54,7 +54,8 @@ vetter/                  the package: zrun's strict subset of Python (docs/10-na
   shells/python/         python -c's code: python.zgram, scan.py, resolve.py (followed abstractly), stdlib.py
   specs/                 what programs do with their arguments: *.toml, load.py, the engine
   policy/                policy.zgram, language.py, actions.py, checks.py (lint), trace.py; builtin/
-  agents/                hook.py (9 agents), log.py (secrets masked), install.py, importing.py
+  agents/                hook.py (9 agents), log.py (secrets masked), install.py, importing.py,
+                         learn.py (rules from the asks you said yes to)
 corpus/                  the bypass corpus (bash/, powershell/, cmd/, harmless/)
 tests/                   pytest, each part in both of zrun's modes, against golden/ (recorded answers);
                          --build: the standalone hook and libvetter; --oracle: tools/oracle, run for real

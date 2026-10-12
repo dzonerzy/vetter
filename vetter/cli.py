@@ -284,6 +284,13 @@ def main(argv=None):
     p.add_argument("--limit", type=int, help="only the last N")
     p.set_defaults(func=cmd_replay)
 
+    p = sub.add_parser("learn", help="rules from the asks you said yes to (shown; --apply adds them)")
+    p.add_argument("--policy", help="the policy to add them to (default: ~/.config/vetter/policy.vet)")
+    p.add_argument("--log", help="the log (default: ~/.local/state/vetter/log.jsonl)")
+    p.add_argument("--min", type=int, default=2, help="said yes to at least this many times (default 2)")
+    p.add_argument("--apply", help="all, or the suggestions' numbers: 1,3")
+    p.set_defaults(func=lambda a: _learn().run(a))
+
     p = sub.add_parser("hook", help="an agent's hook: its request on stdin, the decision on stdout")
     p.add_argument("agent", choices=sorted(AGENTS))
     p.add_argument("--policy")
@@ -308,6 +315,12 @@ def _install():
     from .agents import install
 
     return install
+
+
+def _learn():
+    from .agents import learn
+
+    return learn
 
 
 if __name__ == "__main__":

@@ -300,13 +300,40 @@ def at_jwt(s, i):
 def record(rt, agent, cwd, command, decision, path):
     """Append a decision to the log at `path` (never raises: a log that
     fails isn't a decision that fails)."""
+    record_call(rt, agent, cwd, command, decision, path, "", None)
+
+
+def record_call(rt, agent, cwd, command, decision, path, ident, project):
+    """record(), with the agent's id for the call ("" none: a later ran()
+    with it says the command ran) and the project it was decided in."""
+    entry = {"time": int(time()), "agent": agent, "cwd": cwd, "command": mask(command),
+             "decision": decision.decision,
+             "rule": where(decision.rule) if decision.rule is not None else decision.by}
+    if ident != "":
+        entry["id"] = ident
+    if project is not None:
+        entry["project"] = project
+    append(rt, path, entry)
+
+
+def record_ran(rt, agent, ident, path):
+    """The call with this id ran (after an ask: the user said yes)."""
+    line = dumps({"time": int(time()), "agent": agent, "ran": ident}) + "\n"
+    try:
+        new = not exists(path)
+        makedirs(parent_of(path), 0o700, True)
+        open(path, "a", encoding="utf-8").write(line)
+        if new:
+            chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def append(rt, path, entry):
     try:
         new = not exists(path)
         # (its directory the user's only: the commands are theirs)
         makedirs(parent_of(path), 0o700, True)
-        entry = {"time": int(time()), "agent": agent, "cwd": cwd, "command": mask(command),
-                 "decision": decision.decision,
-                 "rule": where(decision.rule) if decision.rule is not None else decision.by}
         open(path, "a", encoding="utf-8").write(dumps(entry) + "\n")
         if new:
             chmod(path, 0o600)

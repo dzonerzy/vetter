@@ -239,6 +239,9 @@ def decide(rt, agent, request, policy_path):
     """What to answer: (the agent's answer or None, whether anything)"""
     if not isinstance(request, dict):
         return answer(agent, "", "ask", "vetter: a request it doesn't understand", False)
+    if (agent == "claude" or agent == "codex") and request.get("hook_event_name") == "PostToolUse":
+        it_ran(rt, agent, request, policy_path)
+        return None
     edited = edited_file(agent, request)
     if edited is not None:
         # (an editing tool: what it writes remembered, nothing decided)
@@ -255,11 +258,32 @@ def decide(rt, agent, request, policy_path):
     policy = load_policy(rt, policy_path, cwd, home)
     project = workspace_project(cwd, home, workspace_of(agent, request))
     d = check(rt, policy, call.command, call.shell, cwd, home, project, temp_dirs(home, True))
+    call_id = request.get("tool_use_id")
     if policy.log:
-        log.record(rt, agent, cwd, call.command, d, log_path(home))
+        log.record_call(rt, agent, cwd, call.command, d, log_path(home), call_id if isinstance(call_id, str) else "",
+                        project)
     written.record_decision(d, policy.written, written_path(home))
     at = " [" + where(d.rule) + "]" if d.rule is not None else ""
     return answer(agent, call.mode, d.decision, "vetter: " + d.reason + at, d.by == "default" or d.by == "nothing")
+
+
+def it_ran(rt, agent, request, policy_path):
+    """A call that ran (PostToolUse): if vetter asked, the user said yes
+    (`vetter learn`'s); logged by its id, nothing answered."""
+    ident = text_field(request, "tool_use_id")
+    cwd = text_field(request, "cwd")
+    home = home_dir()
+    policy = load_policy(rt, policy_path, cwd if cwd != "" else getcwd(), home)
+    if ident != "" and policy.log:
+        log.record_ran(rt, agent, ident, log_path(home))
+
+
+def text_field(request, key):
+    """request[key] if it's a str, else ""."""
+    v = request.get(key)
+    if isinstance(v, str):
+        return v
+    return ""
 
 
 def run(rt, agent, policy_path):

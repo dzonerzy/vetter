@@ -7,8 +7,8 @@ exit 2 to block). One engine, each agent's request and answer
 
 | Agent | `vetter install` writes | Request | Answer | Ask? | On a hook failure |
 |---|---|---|---|---|---|
-| Claude Code | `~/.claude/settings.json`: `PreToolUse`, matcher `Bash\|PowerShell` | `tool_name`, `tool_input.command`, `cwd` | `hookSpecificOutput.permissionDecision` | yes | vetter answers ask |
-| Codex CLI | `~/.codex/hooks.json`: `PreToolUse`, matcher `^Bash$` (trust it with `/hooks`) | Claude's | deny only: `hookSpecificOutput` deny; allow is saying nothing | no: an ask fails the hook and the call goes ahead, so vetter denies | fails open |
+| Claude Code | `~/.claude/settings.json`: `PreToolUse`, matcher `Bash\|PowerShell`; `PostToolUse` (learning) | `tool_name`, `tool_input.command`, `cwd` | `hookSpecificOutput.permissionDecision` | yes | vetter answers ask |
+| Codex CLI | `~/.codex/hooks.json`: `PreToolUse`, matcher `^Bash$` (trust it with `/hooks`); `PostToolUse` (learning) | Claude's | deny only: `hookSpecificOutput` deny; allow is saying nothing | no: an ask fails the hook and the call goes ahead, so vetter denies | fails open |
 | Gemini CLI | `~/.gemini/settings.json`: `BeforeTool`, matcher `run_shell_command` | `tool_input.command`, `dir_path` | `{"decision": "allow" \| "deny", "reason"}` | no: deny | fails open |
 | Cursor | `~/.cursor/hooks.json`: `beforeShellExecution`, `failClosed` | `command`, `cwd` | `{"permission", "user_message", "agent_message"}` | yes (not in `preToolUse`) | blocks (`failClosed`) |
 | Copilot CLI | `~/.copilot/hooks/vetter.json`: `preToolUse`, matcher `bash\|powershell` | `toolName`, `toolArgs` (a JSON string), `cwd` | `{"permissionDecision", "permissionDecisionReason"}` | yes (not on the cloud agent) | errors block, timeouts don't |
@@ -39,6 +39,40 @@ proxy.
 - **Which shell**: Claude's and Copilot's tools say it (`Bash`,
   `PowerShell`); the others run the system's shell: bash, or PowerShell on
   Windows.
+
+## Learning from what you say yes to
+
+The log keeps each decision with the agent's id for the call (Claude's and
+Codex's `tool_use_id`) and the project, and `PostToolUse` adds a record
+when the call ran: an ask whose call ran is a yes. `vetter learn` makes
+rules of them:
+
+```
+$ vetter learn
+  1. allow network to api.example.com
+     said yes 4 times: curl -s https://api.example.com/v1/items; ...
+  2. allow terraform validate
+     said yes 3 times: terraform validate; terraform validate -json
+  3. allow delete in /home/u/proj/out
+     said yes 2 times: rm -rf out/a; rm -rf out/b
+
+$ vetter learn --apply 1,2
+```
+
+What made a command asked makes the narrowest rule that allows it: the
+program and its subcommands (the words before its first option, when no
+rule named it), the host (the `network` rule's ask), the project's folder
+it deletes or writes in (`deleting files`'), the folder it reads. Never
+learned: what vetter couldn't see, an ask a rule makes on purpose (losing
+work, `sudo`, what the agent wrote, configured code), anything denied, a
+rule that would allow a command said no to. `--min N` (default 2): yeses
+needed. The rules go in your policy (`~/.config/vetter/policy.vet`, or
+`--policy`) before its `use`, where a used policy's deny rules still come
+first: a learned host doesn't let a file be sent there. A project's
+`.vetter.vet` isn't written: its allow rules don't count (the agent can
+write it). An ask by the default (no rule) is the agent's own prompt: a
+call that ran after it was said yes to there, or allowed by the agent's
+own rules.
 
 ## Checked
 

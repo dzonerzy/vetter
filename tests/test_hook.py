@@ -196,6 +196,27 @@ def test_logged(program, tmp_path, monkeypatch):
     assert all(json.loads(ln)["agent"] == "claude" for ln in lines)
 
 
+def test_ran_logged(program, tmp_path, monkeypatch):
+    """A call's id logged with its decision, and after it ran (PostToolUse:
+    nothing answered) a record that it did: an ask the user said yes to,
+    `vetter learn`'s"""
+    home = tmp_path / "home"
+    home.mkdir()
+    pol = tmp_path / "p.vet"
+    pol.write_text("policy t\nuse stock\n")
+    monkeypatch.setenv("HOME", str(home))
+    for mode in ("python", "compiled"):
+        pre = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "rm notes.txt"},
+               "cwd": CWD, "tool_use_id": "toolu_" + mode}
+        post = dict(pre, hook_event_name="PostToolUse")
+        assert decision(json.loads(answer(program, "claude", json.dumps(pre), str(pol), mode))) == "ask"
+        assert answer(program, "claude", json.dumps(post), str(pol), mode) == ""
+    lines = [json.loads(ln) for ln in (home / ".local" / "state" / "vetter" / "log.jsonl").read_text().splitlines()]
+    assert [(e.get("id"), e.get("ran"), e.get("decision")) for e in lines] == [
+        ("toolu_python", None, "ask"), (None, "toolu_python", None),
+        ("toolu_compiled", None, "ask"), (None, "toolu_compiled", None)]
+
+
 def test_project_policy(program, policy, tmp_path):
     """A project's .vetter.vet found up from the cwd, its deny first"""
     proj = tmp_path / "proj"
@@ -492,6 +513,10 @@ def test_install(agent, tmp_path, capsys):
     if agent in ("amp", "opencode"):
         assert f'"vetter", "hook", "{agent}"' in text
     else:
-        assert text.count("-m vetter hook") == (2 if agent == "copilot" else 1)
+        # (copilot: two places; claude and codex: before a call and after it,
+        # `vetter learn`'s)
+        assert text.count("-m vetter hook") == (2 if agent in ("copilot", "claude", "codex") else 1)
+    if agent in ("claude", "codex") and agent in install.JSON_TARGETS:
+        assert "PostToolUse" in json.loads(text)["hooks"]
     if agent in install.JSON_TARGETS:
         assert json.loads(text)["other"] == 1

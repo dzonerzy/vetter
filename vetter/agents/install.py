@@ -51,10 +51,14 @@ def _claude_like(data, event, matcher, agent, timeout):
 def _claude(data):
     # (the editing tools too: what they write, run later, is the agent's)
     _claude_like(data, "PreToolUse", "Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit", "claude", 10)
+    # (a command that ran after vetter asked: the user said yes, `vetter
+    # learn`'s)
+    _claude_like(data, "PostToolUse", "Bash|PowerShell", "claude", 10)
 
 
 def _codex(data):
     _claude_like(data, "PreToolUse", "^Bash$", "codex", 30)
+    _claude_like(data, "PostToolUse", "^Bash$", "codex", 30)
 
 
 def _gemini(data):
