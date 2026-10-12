@@ -529,7 +529,7 @@ families = ["--occurrence", "--atime-preserve", "--backup", "--checkpoint", "--t
 "-P" = {reason = "extracts to the paths the archive names, anywhere", kind = "code"}
 "--absolute-names" = {reason = "extracts to the paths the archive names, anywhere", kind = "code"}
 # (the files added, deleted; links followed: what they point to read)
-"--remove-files" = {reason = "deletes the files it adds", kind = "code"}
+"--remove-files" = {reason = "deletes the files it adds", kind = "delete_read"}
 "-h" = {reason = "reads what the links in its files point to", kind = "code"}
 "--dereference" = {reason = "reads what the links in its files point to", kind = "code"}
 "--hard-dereference" = {reason = "reads what the links in its files point to", kind = "code"}
@@ -615,8 +615,8 @@ families = ["-UN="]
 # (-@: the files to add, named on its stdin; -m: the files added deleted)
 "-@" = {reason = "reads the files named on its stdin", kind = "configured"}
 "--names-stdin" = {reason = "reads the files named on its stdin", kind = "configured"}
-"-m" = {reason = "deletes the files it adds", kind = "code"}
-"--move" = {reason = "deletes the files it adds", kind = "code"}
+"-m" = {reason = "deletes the files it adds", kind = "delete_read"}
+"--move" = {reason = "deletes the files it adds", kind = "delete_read"}
 
 # unzip ARCHIVE [MEMBER...] [-x MEMBER...] [-d DIR]
 [[spec]]
@@ -651,7 +651,7 @@ families = ["-ao", "-bb", "-bs", "-r", "-sa", "-scc", "-scs", "-scrc", "-sfx", "
 "-ai" = "archive_switch"
 "-ax" = "archive_switch"
 [spec.flags]
-"-sdel" = {reason = "deletes the files after adding them", kind = "code"}
+"-sdel" = {reason = "deletes the files after adding them", kind = "delete_read"}
 "-spf" = {reason = "extracts to the full paths the archive names, anywhere", kind = "code"}
 "-seml" = {reason = "sends the archive by email", kind = "code"}
 

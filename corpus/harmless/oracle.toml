@@ -1,0 +1,37 @@
+# The same mechanisms, used as usual: allowed.
+
+[[case]]
+id = "harmless-oracle-alias"
+shell = "bash"
+command = "alias ll='ls -la'\nll src > listing.txt"
+runs = ["alias", "ls"]
+expect = "allow"
+why = "the alias's command, its output in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-oracle-cmdsub-echo"
+shell = "bash"
+command = "mkdir -p \"build/$(echo debug)\" && ls build"
+runs = ["echo", "mkdir", "ls"]
+expect = "allow"
+why = "a folder in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-oracle-git-trace"
+shell = "bash"
+command = "GIT_TRACE=1 git status"
+runs = ["git"]
+expect = "allow"
+why = "the trace on stderr"
+source = "derived"
+
+[[case]]
+id = "harmless-oracle-zip-move-in-project"
+shell = "bash"
+command = "zip -qm logs.zip logs/old.log"
+runs = ["zip"]
+expect = "ask"
+why = "deleting a file in the project: asked, as rm would be"
+source = "derived"

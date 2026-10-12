@@ -510,6 +510,10 @@ def apply_specs(rt, w, e, ctx):
     or where it runs."""
     first = len(w.r.unknowns)
     spec_roles(rt, w, e, ctx)
+    marked = [r for r in e.roles if r.role == "delete_read"]
+    if len(marked) > 0:
+        for r in [x for x in e.roles if x.role == "read" and x.option is None]:
+            e.roles.append(Role("delete", r.value, marked[0].option))
     dest = extraction(e)
     if dest is not None:
         # (what it extracts written there)
@@ -681,6 +685,11 @@ def flag(rt, w, e, ctx, label, value, given):
     for o in option_names(e):
         if o in value.unless:
             return
+    if value.kind == "delete_read":
+        # (zip -m, tar --remove-files: the files it reads, deleted after;
+        # marked, made deletes once its operands' roles are in)
+        e.roles.append(Role("delete_read", Field([""], False, False), last_word(label)))
+        return
     if value.kind == "delete_starts":
         # (find -delete: deletes what's under its starting points)
         starts = given if len(given) > 0 else [Field(["."], False, False)]
@@ -948,6 +957,13 @@ def role(rt, w, e, ctx, r, value, option, spec):
                 code(rt, w, val if "/" in first else "git-credential-" + val, ctx, e.span, "git " + key, False, None)
         elif cr is not None and cr != "plain":
             role(rt, w, e, ctx, cr, Field([val], False, False), "-c " + key, spec)
+    elif r == "trace_file":
+        # (GIT_TRACE=/path: the trace written there; 1, 2, true: stderr)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": a trace written where only running tells", e.span, ctx, "code",
+                    [])
+        elif field_static(value).startswith("/") or (len(field_static(value)) > 2 and field_static(value)[1] == ":"):
+            e.roles.append(Role("write", value, option))
     elif r == "opt_info":
         # (-fopt-info-all=FILE, -fopt-info=FILE: the notes written there)
         if field_known(value) and "=" in field_static(value):
@@ -1965,7 +1981,7 @@ def env_role(var):
     if var in ENV:
         return ENV[var]
     for head, tail, r in ENV_PATTERNS:
-        if len(var) > len(head) + len(tail) and var.startswith(head) and var.endswith(tail):
+        if len(var) >= len(head) + len(tail) and var.startswith(head) and var.endswith(tail):
             return r
     return None
 

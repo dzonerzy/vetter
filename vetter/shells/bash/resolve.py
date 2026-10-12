@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import zgram
 
 from ... import paths
-from ...specs import WRAPPERS, Role, apply_specs, env_role
+from ...specs import WRAPPERS, Role, apply_specs, env_role, strip
 from . import arith
 from .expand import (
     NUMBER,
@@ -31,11 +31,12 @@ from .expand import (
     field_known,
     field_static,
     field_text,
+    output_key,
     var_copy,
     var_forget,
     var_get,
 )
-from .syntax import parse
+from .syntax import nodes_of, parse
 
 MAX_DEPTH = 8
 MAX_ITEMS = 16      # a for loop's items walked one by one
@@ -503,6 +504,8 @@ def substitution(rt, w,node, ctx):
         inner.base = 0
         inner.source = tick.command.source
         seq(rt, w,tick.command.tree, inner)
+        # (after its own substitutions: what they print, known in it)
+        known_output(w, ctx, node, tick.command.tree, inner)
         return
     key = ctx.base + offset(ctx.source, node)
     if node.rule == "procsub" and node.text.startswith(">"):
@@ -512,8 +515,45 @@ def substitution(rt, w,node, ctx):
     first = len(w.r.executions)
     for k in children(node, "compound_list"):
         seq(rt, w,k, inner)
+        known_output(w, ctx, node, k, inner)
     if node.rule == "procsub" and node.text.startswith("<") and len(w.r.executions) > first:
         w.procs[key] = w.r.executions[len(w.r.executions) - 1]
+
+
+def known_output(w, ctx, node, body, inner):
+    """$(echo rm), `printf '%s%s' r m`: a substitution that's only echo or
+    printf (bash's, not a function or alias of that name) with words all
+    known prints what's known: its output, trailing newlines off, kept for
+    the word it's in."""
+    if node.rule == "procsub":
+        return
+    # (the same text read again, eval's: what it printed before, not kept)
+    ctx.vars.outputs.pop(output_key(node), None)
+    # (one command, the whole of it: the others, in its substitutions)
+    c = None
+    for s in nodes_of(body, "simple", []):
+        if c is None and strip(s.text) == strip(body.text):
+            c = s
+    if c is None:
+        return
+    if len(children(c, "assignment")) > 0 or len(children(c, "redirect")) > 0:
+        return
+    argv = []
+    for x in c.children:
+        if x.rule == "cmd_name" or x.rule == "word":
+            for f in expand_word(x, inner.vars, inner.home, True):
+                if not field_known(f):
+                    return
+                argv.append(field_static(f))
+    if len(argv) == 0 or (argv[0] != "echo" and argv[0] != "printf") or argv[0] in ctx.names \
+            or argv[0] in w.r.functions:
+        return
+    out = echo_output(argv[0], argv[1:])
+    if out is None:
+        return
+    while out.endswith("\n"):
+        out = out[: len(out) - 1]
+    ctx.vars.outputs[output_key(node)] = out
 
 
 def link_procsubs(w, ctx, e, fields):
@@ -544,6 +584,40 @@ def backtick(node, ctx):
     return None
 
 
+def aliased(rt, w, node, name, ctx, stdin):
+    """ll -x > f, ll an alias (written as it is, unquoted): bash puts the
+    alias's text in its place and reads the command again, its words,
+    redirections, here-strings all kept; not the alias itself again."""
+    alias = name.text
+    value = ctx.names[alias][1]
+    span = node_span(ctx, node)
+    if value is None:
+        unknown(rt, w, alias + ": an alias only running tells", span, ctx, "code", [])
+        return
+    i = char_offset(node.text, name.start - node.start)
+    text = node.text[:i] + value + node.text[i + len(alias) :]
+    saved = ctx.stdin
+    if stdin is not None:
+        ctx.stdin = stdin
+    kept = ctx.names.pop(alias)
+    code(rt, w, text, ctx, span, "alias " + alias, True, None)
+    ctx.names[alias] = kept
+    ctx.stdin = saved
+
+
+def char_offset(text, b):
+    """Where byte b of text's UTF-8 is, in characters."""
+    if len(text.encode()) == len(text):
+        return b
+    n = 0
+    i = 0
+    while n < b and i < len(text):
+        c = ord(text[i])
+        n += 1 if c < 0x80 else (2 if c < 0x800 else (3 if c < 0x10000 else 4))
+        i += 1
+    return i
+
+
 def simple(rt, w,node, ctx, stdin):
     assigns = []
     words = []
@@ -556,6 +630,10 @@ def simple(rt, w,node, ctx, stdin):
             words.append(k)
         elif rule == "redirect":
             redirects.append(k)
+    if len(words) > 0 and words[0].rule == "cmd_name" and words[0].text in ctx.names \
+            and ctx.names[words[0].text][0] == "alias":
+        aliased(rt, w, node, words[0], ctx, stdin)
+        return
     # (substitutions run first, in their order)
     substitutions(rt, w,node, ctx)
     reds = []
@@ -647,6 +725,21 @@ def lookup_table(rt, w, ctx, span, a, name):
         return
     subs = children(a, "subscript")
     vals = children(a, "word")
+    arr = children(a, "array")
+    if len(arr) > 0 and len(subs) == 0:
+        # (BASH_CMDS=([git]=/tmp/x ...): each element, as set alone)
+        for x in children(arr[0], "word"):
+            fields = expand_word(x, ctx.vars, ctx.home, False)
+            s = field_static(fields[0]) if len(fields) == 1 else None
+            k, eq, v = (s[1:] if s is not None and s.startswith("[") else "").partition("]=")
+            if eq == "" or not is_name(k.replace("-", "_").replace(".", "_")):
+                unknown(rt, w, name + ": what commands run, changed in a way only running tells", span, ctx,
+                        "lookup_path", [])
+            elif LOOKUP_TABLES[name] == "hash":
+                ctx.names[k] = ("hash", v)
+            else:
+                ctx.names[k] = ("alias", v)
+        return
     key = None
     if len(subs) == 1 and len(children(a, "array")) == 0:
         key = subs[0].text
@@ -1138,6 +1231,7 @@ def shell(rt, w,e, ctx):
     i = 0
     script = None
     dynamic_opts = False
+    interactive = False
     while i < len(args):
         a = args[i]
         if not field_known(a):
@@ -1150,6 +1244,8 @@ def shell(rt, w,e, ctx):
         if (s.startswith("-") and len(s) > 1) or (s.startswith("+") and len(s) > 1):
             if "c" in s[1:] and not s.startswith("--"):
                 script = i + 1
+            if "i" in s[1:] and s.startswith("-") and not s.startswith("--"):
+                interactive = True
             if s == "-o" or s == "+o" or s == "-O" or s == "+O" or s == "--rcfile" or s == "--init-file":
                 i += 1
             i += 1
@@ -1158,6 +1254,14 @@ def shell(rt, w,e, ctx):
     if dynamic_opts:
         unknown(rt, w,name + " with options only running tells", e.span, ctx, "code", [])
         return
+    if interactive and ctx.home is not None:
+        # (bash -i: its history read and written back, readline's
+        # settings read: HISTFILE's, INPUTRC's if given)
+        history = e.env["HISTFILE"] if "HISTFILE" in e.env else Field([ctx.home + "/.bash_history"], False, False)
+        inputrc = e.env["INPUTRC"] if "INPUTRC" in e.env else Field([ctx.home + "/.inputrc"], False, False)
+        e.roles.append(Role("read", history, None))
+        e.roles.append(Role("write", history, None))
+        e.roles.append(Role("read", inputrc, None))
     if script is not None:
         if script >= len(args):
             return

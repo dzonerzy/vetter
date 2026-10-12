@@ -51,7 +51,28 @@ at the prompt; a `rem` inside a block comments out the rest): their
 
 430 cases (2026-10-11): none allowed that shouldn't be, no harmless one
 asked; 27 that should be denied are only asked (still stopped: a person
-decides), mostly commands built at run time.
+decides), mostly commands built at run time. 761 cases (2026-10-12), after
+two audit rounds, the strict specs and the oracle: the same.
+
+## Run for real: the oracles
+
+What vetter decides is checked against what the commands do:
+
+- `python -m tools.oracle.linux`: each bash case vetter allows runs in a
+  throwaway bubblewrap sandbox (the system read-only, a scratch home and
+  project, a `/flag`, no network) under `strace -ff`; each program it ran,
+  each file it read outside the system's, wrote or deleted, is decided as a
+  command of its own (`cat P`, `: > P`, `rm -f P`). One stricter than
+  vetter's decision is a gap. `--all`: the ones it asked about too (a deny
+  only asked). `--mutate`: each attack written other ways
+  (`tools/oracle/mutate.py`: run by another shell, `eval`, a function, a
+  wrapper; the program's name quoted, from `$(echo ...)`, a variable, an
+  alias, a path; its paths through `..`, globs, quotes, `cd`, a
+  redirection), the variants vetter allows run and compared: what it finds
+  are bypasses no one wrote (aliases losing their redirections, `bash -i`'s
+  history: `oracle.toml`).
+- `python tools/oracle/windows.py`: the cmd and PowerShell proofs run on the
+  real shells (from WSL).
 
 ## Sources to mine
 

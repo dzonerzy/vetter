@@ -53,11 +53,17 @@ class Variables:
     # tells. Both read as unknown from then on: what's set through one is
     # the other's)
     refs: dict = field(default_factory=dict)
+    # ($(echo rm), `printf ...`: what it prints, known: by output_key)
+    outputs: dict = field(default_factory=dict)
 
 
 def var_copy(variables):
     return Variables({k: v for k, v in variables.values.items()}, {k: v for k, v in variables.attrs.items()},
-                     {k: v for k, v in variables.refs.items()})
+                     {k: v for k, v in variables.refs.items()}, {k: v for k, v in variables.outputs.items()})
+
+
+def output_key(node):
+    return str(node.start) + ":" + node.text
 
 
 def var_forget(variables, names):
@@ -768,6 +774,10 @@ def expand_items(items, variables, home, tilde):
     for it in items:
         if it.kind != EXP:
             out.append(it)
+            continue
+        if (it.node.rule == "cmdsub" or it.node.rule == "backtick") and output_key(it.node) in variables.outputs:
+            # (a substitution whose output is known: echo's, printf's)
+            chars(out, variables.outputs[output_key(it.node)], it.quoted, True)
             continue
         if it.node.rule != "param":
             out.append(Item(DYN, "", it.quoted, False, it.node))
