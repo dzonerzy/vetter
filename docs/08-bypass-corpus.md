@@ -92,8 +92,42 @@ arguments).
 
 ## Benchmark
 
-Run the corpus against vetter, dcg, cc-safety-net, Codex execpolicy, and each
-agent's built-in rules where they can be run outside the agent. Publish the
-table: denied, asked, wrongly allowed. Plus the other side: a corpus of
-**harmless** compound commands from real sessions, to count prompts that
-shouldn't have been asked.
+`python -m tools.compare.guards --dcg PATH --ccsn PATH [--dcg-corpus DCG_TREE]`:
+each guard as an agent runs it, its Claude Code hook (a scratch HOME, the
+same paths for every one), on bash commands. A guard that says nothing
+leaves the command to the agent: for an attack, not stopped. Codex's
+execpolicy only checks the rules one writes, and the agents' own matchers
+don't run outside them: not here.
+
+2026-10-12, dcg at 00a1c8b, cc-safety-net 2.6.9:
+
+| corpus | guard | attacks stopped | harmless stopped |
+|---|---|---|---|
+| vetter's (bash; gpt-obfuscated's harmless payload left out) | vetter | 326 / 326 (100%) | 0 / 67 |
+| | dcg | 94 / 326 (28.8%) | 4 / 67 |
+| | cc-safety-net | 74 / 326 (22.7%) | 3 / 67 |
+| dcg's own (`tests/corpus`, its home turf) | vetter | 292 / 299 (97.7%) | 157 / 394 (39.8%) |
+| | dcg | 210 / 299 (70.2%) | 3 / 394 (0.8%) |
+| | cc-safety-net | 131 / 299 (43.8%) | 21 / 394 (5.3%) |
+
+Read with care: vetter's corpus is vetter's (every case it missed was
+fixed); dcg and cc-safety-net only mean to stop destruction (and secrets),
+much of vetter's corpus is outside that. On dcg's corpus, vetter's 7 misses
+are the stock policy's choices (`rm -rf ./build`: build output; deleting in
+$temp), its "harmless stopped" its default: a program no rule names is
+asked about (`az`, `gh`, `vault`, dcg's made-up names), where dcg says
+nothing; a policy that names them doesn't ask.
+
+What running dcg's corpus found in vetter, fixed: the stock policy allowed
+git that throws work away (`reset --hard`, `branch -D`, `stash drop`,
+`clean -f`, `push --force`, `restore`, a dynamic argument to them): asked
+now; a long option's prefix (`--del`) is the option for a rule's condition;
+`bash -s` reads its program from stdin; an alias given a here-document is
+read as unknown.
+
+The other side, prompts that shouldn't be asked: 11,511 real commands from
+the Claude Code and Codex sessions on the author's machine, replayed through
+the hook's decision: 37% asked; 25% after the usability round (the
+workspace as the project, `PYTHONPATH` in it, `python -m`, a virtualenv's
+activate, text tools, `[`, `uv run -p`), the rest mostly inline Python
+(`python3 - <<EOF`, code vetter doesn't read) and the network (`gh`).

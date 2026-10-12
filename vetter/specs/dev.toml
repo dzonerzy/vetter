@@ -187,7 +187,27 @@ operands = "package"
 "--index-url" = "url"
 "--extra-index-url" = "url"
 [spec.sub.run]
+# (uv run's options before the command: -p 3.12 isn't a program)
+values = ["-p", "--python", "--with", "--with-editable", "--with-requirements", "--project", "--directory",
+          "--extra", "--group", "--only-group", "--no-group", "--env-file", "--index", "--default-index", "--package",
+          "--index-url", "--extra-index-url", "--find-links", "-f", "--resolution", "--prerelease", "--cache-dir",
+          "--config-file", "-C", "--config-setting"]
+stop_at_operand = true
 operands = "program_args"
+[spec.sub.run.roles]
+"-p" = "interpreter"
+"--python" = "interpreter"
+"--with" = "package"
+"--with-editable" = "package"
+"--with-requirements" = "read"
+"--project" = "project"
+"--directory" = "cwd"
+"--env-file" = "read"
+"--index" = "url"
+"--default-index" = "url"
+"--index-url" = "url"
+"--extra-index-url" = "url"
+"--config-file" = "configured"
 
 [[spec]]
 name = ["cargo"]
@@ -238,14 +258,17 @@ operands = "make"
 "make" = {reason = "runs the Makefile's recipes", kind = "project_code"}
 
 [[spec]]
-name = ["python", "python3", "python2", "pypy", "pypy3"]
+name = ["python", "python3", "python2", "pypy", "pypy3", "python3.8", "python3.9", "python3.10", "python3.11",
+        "python3.12", "python3.13", "python3.14", "python3.15"]
 values = ["-c", "-m", "-W", "-X", "--check-hash-based-pycs"]
 stop_at_operand = true
 stdin_program = true
+# (-c CODE, -m MODULE: the rest is its arguments, not python's)
+final = ["-c", "-m"]
 operands = ["code_file", "plain*"]
 [spec.roles]
 "-c" = "code:python"
-"-m" = "package"
+"-m" = "python_module"
 
 [[spec]]
 name = ["node", "nodejs", "deno"]

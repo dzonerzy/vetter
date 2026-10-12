@@ -114,6 +114,27 @@ def project_root(cwd, home):
         d = parent
 
 
+def workspace_project(cwd, home, workspace):
+    """The project, given the folder the agent works in (the workspace the
+    user opened: Claude Code's CLAUDE_PROJECT_DIR, Cursor's workspace
+    roots): it, when the command runs in it (cd'ing into a repository in
+    it doesn't make the rest of it elsewhere), unless a repository holds it
+    (the larger); never the home, nor /."""
+    root = project_root(cwd, home)
+    if not workspace or not cwd or not isdir(workspace) or not isdir(cwd):
+        return root
+    w = realpath(workspace)
+    if (home and w == realpath(home)) or w == dirname(w):
+        return root
+    c = realpath(cwd)
+    if c != w and not c.startswith(w.rstrip("/") + "/"):
+        return root
+    r = realpath(root) if root and isdir(root) else c
+    if r != w and w.startswith(r.rstrip("/") + "/"):
+        return root
+    return w
+
+
 def load_policy(rt, policy_path, cwd, home):
     """The policy, with the project's own rules first when cwd (None: no
     project) is in a project that has a .vetter.vet (its deny and ask rules

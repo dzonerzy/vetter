@@ -42,6 +42,8 @@ class Spec:
         self.strict = set(self.names) if strict is True else set(strict or [])
         self.switches = set(data.get("switches", []))
         self.families = list(data.get("families", []))
+        # (options after which the rest are the code's arguments: python -m)
+        self.final = list(data.get("final", []))
         self.config = {k.lower(): v for k, v in data.get("config", {}).items()}
         self.sub = {k: Spec(v) for k, v in data.get("sub", {}).items()}
         # (every subcommand it has, those with roles or not: for the

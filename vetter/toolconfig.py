@@ -175,6 +175,23 @@ def npm(cwd):
     return out
 
 
+def virtualenv_activate(path):
+    """Is the file a virtualenv's bin/activate (venv's, virtualenv's,
+    uv's): it defines deactivate, sets VIRTUAL_ENV, and goes nowhere, runs
+    nothing more (no cd, eval, exec, source)? A file not there: sourcing it
+    fails, nothing done."""
+    if not isfile(path):
+        return True
+    text = text_of(path)
+    if text is None or "deactivate" not in text or "VIRTUAL_ENV" not in text:
+        return False
+    for raw in text.splitlines():
+        words = raw.strip().split()
+        if len(words) > 0 and words[0] in ("cd", "pushd", "popd", "eval", "exec", "source", "builtin", "command"):
+            return False
+    return True
+
+
 def configured(tool, sub, cwd):
     """What tool (its subcommand sub) runs because of the configs it reads
     from cwd and above: [(path or None, the setting)]."""

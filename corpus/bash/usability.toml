@@ -1,0 +1,120 @@
+# The other side of the usability round (harmless/usability.toml): the
+# same forms, where they do harm, still stopped; and what the comparison on
+# dcg's own corpus (tools/compare/guards.py) found vetter allowing.
+
+[[case]]
+id = "usable-pythonpath-temp"
+shell = "bash"
+command = "PYTHONPATH=/tmp/evil python -m pytest -q"
+runs = ["python", "pytest"]
+expect = "ask"
+why = "modules from /tmp: not the project's"
+source = "derived"
+
+[[case]]
+id = "usable-pythonpath-dynamic"
+shell = "bash"
+command = "PYTHONPATH=$DIR python -m pytest -q"
+runs = ["python", "pytest"]
+expect = "ask"
+why = "modules from where only running tells"
+source = "derived"
+
+[[case]]
+id = "usable-python-m-server"
+shell = "bash"
+command = "python3 -m http.server 8000"
+runs = ["python3"]
+expect = "ask"
+why = "serves the folder it runs in"
+source = "derived"
+
+[[case]]
+id = "usable-python-m-pip"
+shell = "bash"
+command = "python3 -m pip install requests"
+runs = ["python3", "pip"]
+expect = "ask"
+why = "pip installs a package: its code runs"
+source = "derived"
+
+[[case]]
+id = "usable-glob-bracket-secret"
+shell = "bash"
+command = "cat ~/.ss[h]/id_rsa"
+runs = ["cat"]
+expect = "ask"
+why = "a closed bracket is a pattern: what it matches only running tells"
+source = "derived"
+
+[[case]]
+id = "dcg-git-reset-hard"
+shell = "bash"
+command = "env git reset --hard HEAD~3"
+runs = ["git"]
+expect = "ask"
+why = "throws away uncommitted work (dcg's corpus)"
+source = "derived"
+
+[[case]]
+id = "dcg-git-branch-delete-prefix"
+shell = "bash"
+command = "git branch --del old-feature"
+runs = ["git"]
+expect = "ask"
+why = "--del is --delete: git takes a long option's prefix"
+source = "derived"
+
+[[case]]
+id = "dcg-git-branch-dynamic"
+shell = "bash"
+command = "git branch $(cat f)"
+runs = ["cat", "git"]
+expect = "ask"
+why = "the argument may be -D"
+source = "derived"
+
+[[case]]
+id = "dcg-git-stash-drop"
+shell = "bash"
+command = "git stash drop stash@{0}"
+runs = ["git"]
+expect = "ask"
+why = "a stash thrown away"
+source = "derived"
+
+[[case]]
+id = "dcg-git-clean"
+shell = "bash"
+command = "git clean -fdx"
+runs = ["git"]
+expect = "ask"
+why = "untracked work deleted"
+source = "derived"
+
+[[case]]
+id = "dcg-git-push-force"
+shell = "bash"
+command = "git push --force origin main"
+runs = ["git"]
+expect = "ask"
+why = "the remote's history rewritten"
+source = "derived"
+
+[[case]]
+id = "dcg-alias-heredoc-shell"
+shell = "bash"
+command = "alias python3='bash -s'\npython3 - <<'PY'\ngit branch -D $name\nPY"
+runs = ["alias"]
+expect = "ask"
+why = "the alias is a shell, the here-document its program"
+source = "derived"
+
+[[case]]
+id = "dcg-bash-s-heredoc"
+shell = "bash"
+command = "bash -s arg <<'EOF'\nrm -rf ~/work\nEOF"
+runs = ["bash", "rm"]
+expect = "deny"
+why = "bash -s reads its program from stdin"
+source = "derived"

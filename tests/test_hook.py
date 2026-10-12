@@ -288,8 +288,16 @@ def test_what_this_machine_says(program, policy, own_home):
     clean = own_home / "clean"
     (clean / ".git").mkdir(parents=True)
     (clean / ".git" / "config").write_text("[core]\n\tbare = false\n\tfsmonitor = true\n")
+    command = own_home / "command"
+    (command / ".git").mkdir(parents=True)
+    (command / ".git" / "config").write_text("[core]\n\tfsmonitor = w --watch\n")
     for mode in ("python", "compiled"):
+        # (a program by its path, in /tmp: one from a temporary dir; a
+        # command line: what it runs, configured)
         out = json.loads(answer(program, "claude", json.dumps(claude_req("git status", cwd=str(repo))), policy, mode))
+        assert decision(out) == "deny" and "/tmp/w" in out["hookSpecificOutput"]["permissionDecisionReason"]
+        out = json.loads(answer(program, "claude", json.dumps(claude_req("git status", cwd=str(command))), policy,
+                                mode))
         assert decision(out) == "ask" and "core.fsmonitor" in out["hookSpecificOutput"]["permissionDecisionReason"]
         out = json.loads(answer(program, "claude", json.dumps(claude_req("git status", cwd=str(clean))), policy, mode))
         assert decision(out) == "allow"
@@ -300,7 +308,7 @@ def test_what_this_machine_says(program, policy, own_home):
                                 mode))
         assert decision(out) == "allow", out
         out = json.loads(answer(program, "claude", json.dumps(claude_req(other)), policy, mode))
-        assert decision(out) == "ask" and "core.fsmonitor" in out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert decision(out) == "deny" and "/tmp/w" in out["hookSpecificOutput"]["permissionDecisionReason"]
     state = own_home / ".local" / "state" / "vetter" / "written.tsv"
     for mode in ("python", "compiled"):
         if state.exists():

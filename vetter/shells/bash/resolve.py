@@ -596,6 +596,13 @@ def aliased(rt, w, node, name, ctx, stdin):
     if value is None:
         unknown(rt, w, alias + ": an alias only running tells", span, ctx, "code", [])
         return
+    for r in children(node, "redirect"):
+        if len(r.children) > 0 and r.children[0].rule == "heredoc":
+            # (its here-document's body is after the line, not in the
+            # command's text read again: what it gives, unknown)
+            unknown(rt, w, alias + ": an alias given a here-document vetter doesn't read again", span, ctx, "code",
+                    [])
+            return
     i = char_offset(node.text, name.start - node.start)
     text = node.text[:i] + value + node.text[i + len(alias) :]
     saved = ctx.stdin
@@ -1234,6 +1241,7 @@ def shell(rt, w,e, ctx):
     script = None
     dynamic_opts = False
     interactive = False
+    from_stdin = False
     while i < len(args):
         a = args[i]
         if not field_known(a):
@@ -1248,6 +1256,9 @@ def shell(rt, w,e, ctx):
                 script = i + 1
             if "i" in s[1:] and s.startswith("-") and not s.startswith("--"):
                 interactive = True
+            if "s" in s[1:] and s.startswith("-") and not s.startswith("--"):
+                # (bash -s ARGS: its program on stdin, ARGS its arguments)
+                from_stdin = True
             if s == "-o" or s == "+o" or s == "-O" or s == "+O" or s == "--rcfile" or s == "--init-file":
                 i += 1
             i += 1
@@ -1275,7 +1286,7 @@ def shell(rt, w,e, ctx):
         positional = statics(rest[1:]) if all_known(rest) else UNKNOWN
         code(rt, w,field_static(body), ctx, e.span, name + " -c", False, positional)
         return
-    if i < len(args):
+    if i < len(args) and not from_stdin:
         target = args[i]
         what = field_static(target) if field_known(target) else field_text(target)
         unknown(rt, w,name + " runs a script file: " + what, e.span, ctx, "code_file", [target])
@@ -1627,6 +1638,13 @@ def builtin_effects(rt, w,e, ctx):
             unknown(rt, w,name + " runs a script file: " + field_static(args[0]), e.span, ctx, "code_file", [args[0]])
         elif len(args) > 0:
             unknown(rt, w,name + " runs a script only running tells", e.span, ctx, "code", [])
+        if len(args) > 0 and field_known(args[0]) and field_static(args[0]).endswith("bin/activate"):
+            # (a virtualenv's: its PATH, VIRTUAL_ENV, prompt set, nothing
+            # else; whether it's one, read where vetter decides)
+            e.roles.append(Role("activate", args[0], None))
+            for v in ("PATH", "VIRTUAL_ENV", "PS1", "PYTHONHOME"):
+                ctx.vars.values[v] = UNKNOWN
+            return
         unknown_all(ctx)
         ctx.cwd = None
 

@@ -847,15 +847,24 @@ def make_field(items):
     f = Field([], False, False)
     text = ""
     quoted_any = False
+    # (an unquoted [ is a pattern's only when a ] closes it after: `[` alone,
+    # test's name, is itself)
+    bracket = -1
+    seen = 0
     for it in items:
         if it.kind == QUOTE:
             quoted_any = True
             continue
         if it.kind == CH:
             text += it.c
+            seen += 1
             if it.quoted:
                 quoted_any = True
-            elif it.c in "*?[":
+            elif it.c == "*" or it.c == "?":
+                f.glob = True
+            elif it.c == "[" and bracket < 0:
+                bracket = seen
+            elif it.c == "]" and bracket >= 0 and seen > bracket + 1:
                 f.glob = True
             continue
         if text != "":

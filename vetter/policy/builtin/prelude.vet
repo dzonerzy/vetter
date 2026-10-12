@@ -5,16 +5,26 @@ policy prelude
 let shell       = sh, bash, zsh, dash, ksh, mksh, fish, pwsh, powershell, cmd, Invoke-Expression
 let builtin     = cd, pushd, popd, pwd, echo, printf, true, false, ":", test, "[", export, unset, set, shift,
                   read, local, declare, typeset, type, hash, exit, return, wait, trap, alias, shopt, umask,
-                  let, mapfile, readarray, sleep, getopts, readonly,
+                  let, mapfile, readarray, sleep, getopts, readonly, ulimit, times,
                   Set-Location, Push-Location, Pop-Location, Get-Location, Write-Output, Write-Host,
                   ForEach-Object, Where-Object, Select-Object, Sort-Object, Measure-Object, Group-Object,
                   Format-Table, Format-List, Out-String, Out-Host, Out-Null, Get-Date, Start-Sleep,
                   Get-Command, Get-Help, Get-Variable, Set-Variable, ConvertTo-Json, ConvertFrom-Json
 let wrapper     = env, command, builtin, exec, eval, time, timeout, nice, nohup, stdbuf, setsid, xargs, watch,
-                  ionice, flock, unbuffer, Start-Process, Invoke-Command, Start-Job, Measure-Command,
-                  conhost
+                  ionice, flock, unbuffer, taskset, chrt, Start-Process, Invoke-Command, Start-Job,
+                  Measure-Command, conhost
+# (programs that read and print: text, files' contents and facts, the
+# machine's state; what they read and write the places decide, what an awk
+# or sed program runs is read)
+let text        = sed, gsed, awk, gawk, mawk, nawk, tr, cut, paste, sort, uniq, column, join, comm, fold, fmt, nl,
+                  rev, tac, expand, unexpand, seq, date, cal, uname, hostname, whoami, id, groups, nproc, uptime,
+                  ps, pgrep, pidof, free, df, du, lscpu, file, stat, wc, head, tail, grep, egrep, fgrep, rg, ag,
+                  jq, xxd, od, hexdump, strings, base64, base32, md5sum, sha1sum, sha256sum, sha512sum, b2sum,
+                  cksum, diff, cmp, basename, dirname, realpath, readlink, which, whereis, printenv, objdump,
+                  nm, readelf, size, c++filt, man, tree, numfmt, factor, expr,
+                  gzip, gunzip, zcat, bzip2, bunzip2, bzcat, xz, unxz, xzcat, zstd, unzstd, zstdcat
 let elevated    = sudo, doas, su, pkexec, runas, gsudo
-let interpreter = python, python3, py, node, deno, bun, perl, ruby, php, lua, cscript, wscript, mshta
+let interpreter = python, python3, "python3.*", py, node, deno, bun, perl, ruby, php, lua, cscript, wscript, mshta
 let downloader  = curl, wget, fetch, aria2c, Invoke-WebRequest, Invoke-RestMethod, Start-BitsTransfer,
                   bitsadmin, certutil
 # (places vetter knows when it decides, not lists: $project, $home (~), $temp:

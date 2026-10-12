@@ -42,10 +42,39 @@ ask "running what the agent wrote"       run generated                # echo ...
 # fine
 allow "build output"                     delete in build
 allow "temporary files"                  delete in $temp
+ask "losing uncommitted work, branches, stashes" {
+  git reset with --hard
+  git reset with --merge
+  git checkout with --force
+  git checkout with -f
+  git switch with --discard-changes
+  git switch with --force
+  git switch with -f
+  git restore unless --staged
+  git stash "drop", clear
+  git branch with --delete
+  git branch with -d
+  git branch with -D
+  git branch with -M
+  git branch with -C
+  git branch with --force
+  git clean with -f
+  git clean with --force
+  git rm with -f
+  git rm with --force
+  git worktree remove
+  git push with --force
+  git push with -f
+  git push with --force-with-lease
+  git reset, checkout, switch, restore, stash, branch, clean, rm, push with dynamic
+}
 allow "git, locally" {
   git status, log, diff, show, branch, rev-parse, ls-files, blame, grep, shortlog, describe, add, commit,
       checkout, switch, restore, stash, merge, rebase, reset, tag, init, mv, rm, cherry-pick, revert,
-      worktree, config, remote, fetch, pull, clone, submodule
+      worktree, config, remote, fetch, pull, clone, submodule, check-ignore, check-attr, cat-file, rev-list,
+      ls-tree, show-ref, for-each-ref, name-rev, merge-base, reflog, count-objects, var, version, help,
+      range-diff, whatchanged, cherry, show-branch, diff-tree, diff-index, diff-files, verify-commit,
+      verify-tag
     unless --ext-diff, --textconv, -c, --config-env, --upload-pack, --receive-pack, --exec
 }
 allow "the project's own code" {
@@ -53,9 +82,10 @@ allow "the project's own code" {
   run script in $project
   run in $project                                   # ./build.sh, .\build.ps1: as `bash build.sh`
 }
-allow "builtins and wrappers"            builtin, wrapper, shell     # what they run is decided on its own
+allow "builtins and wrappers"            builtin, wrapper, shell, source, "."     # what they run is decided on its own
+allow "text and inspection tools"        text                        # what they read and write, the places decide
 allow "language tools" {
-  go, cargo, rustc, npm, pnpm, yarn, bun, node, deno, python, python3, pip, pip3, uv, pytest, ruff,
+  go, cargo, rustc, npm, pnpm, yarn, bun, node, deno, python, python3, "python3.*", pip, pip3, uv, pytest, ruff,
       black, mypy, tsc, eslint, prettier, make, cmake, ninja, gcc, cc, clang, zig, javac, java, mvn,
       gradle, dotnet
     unless dynamic
@@ -163,6 +193,11 @@ tests
   ask    cd /var/lib/x && make
   ask    npm --prefix ../other test
   ask    printf 'all:\n\tcat ~/notes\n' > Makefile && make
-  ask    git -C ../other status
+  # git that throws work away: asked; the rest of it, local, allowed
+  ask    git reset --hard HEAD~1
+  ask    env git branch -D old-feature
+  ask    git stash drop
+  ask    git clean -fdx
+  allow  git stash pop && git branch -a && git restore --staged src/a.c
   ask    unzip -o pkg.zip && cat pkg/README
   ask    [cmd] echo @type notes.txt > git.cmd & git status

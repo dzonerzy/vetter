@@ -80,7 +80,7 @@ def _spec(name):
 
 
 def _flags(spec):
-    out = set(spec.values) | set(spec.flags) | set(spec.roles)
+    out = set(spec.values) | set(spec.flags) | set(spec.roles) | set(spec.switches)
     for s in spec.sub.values():
         out |= _flags(s)
     return out

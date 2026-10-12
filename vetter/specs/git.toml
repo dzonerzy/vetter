@@ -140,6 +140,21 @@ operands = ["url", "plain*"]
 "--receive-pack" = "program"
 "--exec" = "program"
 
+[sub.reset]
+values = ["--pathspec-from-file"]
+switches = ["--hard", "--soft", "--mixed", "--merge", "--keep", "-q", "--quiet", "-p", "--patch", "-N",
+            "--intent-to-add", "--recurse-submodules", "--no-recurse-submodules"]
+[sub.reset.roles]
+"--pathspec-from-file" = "read"
+
+[sub.branch]
+# (its options: the policy's rules name them, -D, -M)
+values = ["-u", "--set-upstream-to", "--contains", "--no-contains", "--merged", "--no-merged", "--points-at",
+          "--sort", "--format", "--color", "--column"]
+switches = ["-d", "-D", "--delete", "-m", "-M", "--move", "-c", "-C", "--copy", "-f", "--force", "-a", "--all",
+            "-r", "--remotes", "-l", "--list", "-v", "-vv", "--verbose", "-q", "--quiet", "--show-current",
+            "--unset-upstream", "--edit-description", "-t", "--track", "--no-track", "-i", "--ignore-case"]
+
 [sub.ls-remote]
 values = ["--upload-pack"]
 operands = ["url", "plain*"]

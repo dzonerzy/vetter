@@ -22,7 +22,7 @@ from .. import paths
 from ..glob import match as fnmatch
 from ..shells.bash.syntax import nodes_of, offset
 from ..specs import SPECS, is_space, project_dirs, strip
-from ..shells.bash.expand import field_known, field_static
+from ..shells.bash.expand import field_known, field_static, field_text
 from .actions import Action, action_text, defines, looked_up, parts
 from ..paths import fold
 
@@ -896,7 +896,16 @@ def first_word(s):
 def match_cond(pl, c, part, act):
     kind = c[0]
     if kind == "flag":
-        return Why(c[1] in part.flags, c[1])
+        if c[1] in part.flags:
+            return Why(True, c[1])
+        if c[1].startswith("--"):
+            # (git --del is --delete: GNU programs take a long option's
+            # prefix; one that might be it, as if it is (with: the rule
+            # applies; unless: its exception does, the stricter both ways))
+            for f in part.flags:
+                if f.startswith("--") and len(f) > 2 and c[1].startswith(f):
+                    return Why(True, f + " (" + c[1] + ")")
+        return Why(False, c[1])
     if kind == "dynamic":
         return Why(part.dynamic, "arguments only running tells")
     if kind == "via":
@@ -1022,8 +1031,9 @@ def machine_actions(p, part):
     """What a program does here that its command doesn't say, deciding on
     this machine: git running what its repository's own config names
     (core.fsmonitor=./w); pytest importing a conftest.py the agent wrote."""
-    from ..gitconfig import isfile, repo_config, runs_from
-    from ..toolconfig import configured
+    from ..gitconfig import dirname as git_dirname
+    from ..gitconfig import git_dir, isfile, repo_config, runs_from
+    from ..toolconfig import configured, virtualenv_activate
 
     if part.name is None or part.unknown:
         return []
@@ -1038,6 +1048,14 @@ def machine_actions(p, part):
         if s is not None and not s.startswith("-") and not s.startswith("+"):
             sub = s
             break
+    for r in e.roles:
+        if r.role == "activate":
+            # (. .venv/bin/activate, read as a virtualenv's: one that isn't
+            # may go elsewhere, run more)
+            where = paths.join(cwd, field_static(r.value)) if field_known(r.value) else None
+            if where is None or not virtualenv_activate(where):
+                out.append(Action("run", None, None, "configured", "sourced " + field_text(r.value)
+                                  + ": not a virtualenv's activate, what it changes only running tells"))
     for path, setting in configured(part.name, sub, cwd):
         # (a program its config names: a file of code where it is, the
         # agent's if it wrote it; a setting otherwise, configured)
@@ -1055,8 +1073,19 @@ def machine_actions(p, part):
             where = paths.join(cwd, field_static(d)) if field_known(d) else None
             if where is None:
                 continue
+            g = git_dir(where)
+            top = git_dirname(g) if g is not None and g.rstrip("/").endswith(".git") else where
             for setting in runs_from(repo_config(where)):
-                out.append(Action("run", None, None, "configured", "the repository's git config: " + setting))
+                key, _, value = setting.partition("=")
+                value = value.strip().strip('"')
+                if value != "" and " " not in value and "\t" not in value and not value.startswith("!") \
+                        and (key == "core.hookspath" or "/" in value or "\\" in value):
+                    # (core.hooksPath=.githooks, a program by its path: the
+                    # scripts there, where they are)
+                    out.append(Action("run", paths.join(top, value), None, "script",
+                                      "the repository's git config: " + setting))
+                else:
+                    out.append(Action("run", None, None, "configured", "the repository's git config: " + setting))
     elif part.name in PYTESTS or ((part.name == "python" or part.name == "python3") and runs_pytest(e)):
         # (its conftest.py files: under where it runs, and in the folders
         # above it)

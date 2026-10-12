@@ -1,0 +1,101 @@
+# What 11,511 real agent commands (Claude Code and Codex sessions,
+# replayed) asked about needlessly: read the way they run, allowed.
+
+[[case]]
+id = "usable-test-bracket"
+shell = "bash"
+command = "[ -f build.zig ] && echo yes"
+runs = ["[", "echo"]
+expect = "allow"
+why = "[ is test: a lone [ isn't a pattern"
+source = "derived"
+
+[[case]]
+id = "usable-pythonpath-project"
+shell = "bash"
+command = "PYTHONPATH=src:zig-out/lib python -m pytest -q tests"
+runs = ["python", "pytest"]
+expect = "allow"
+why = "modules from the project's own folders; python -m pytest is pytest"
+source = "derived"
+
+[[case]]
+id = "usable-python-m-pytest-options"
+shell = "bash"
+command = "python3 -m pytest -v -p no:cacheprovider tests/test_x.py"
+runs = ["python3", "pytest"]
+expect = "allow"
+why = "pytest's options, not python's: no:cacheprovider isn't a file"
+source = "derived"
+
+[[case]]
+id = "usable-python-m-project-module"
+shell = "bash"
+command = "python -m tools.corpus.decide_corpus -v"
+runs = ["python"]
+expect = "allow"
+why = "the project's own module"
+source = "derived"
+
+[[case]]
+id = "usable-python-stdin-dash"
+shell = "bash"
+command = "python3 -c 'print(1)' > out.txt && cat - < out.txt"
+runs = ["python3", "cat"]
+expect = "ask"
+why = "python -c is code vetter doesn't read (asked); cat - is stdin, not a file named -"
+source = "derived"
+
+[[case]]
+id = "usable-uv-run-python-version"
+shell = "bash"
+command = "uv run -p 3.12 python -m pytest -q"
+runs = ["uv", "python", "pytest"]
+expect = "allow"
+why = "-p 3.12 is uv's option, not a program"
+source = "derived"
+
+[[case]]
+id = "usable-text-tools"
+shell = "bash"
+command = "git log --oneline | sed -n 1,5p | tr a-z A-Z | sort | uniq -c; date; nproc"
+runs = ["git", "sed", "tr", "sort", "uniq", "date", "nproc"]
+expect = "allow"
+why = "text tools reading their stdin"
+source = "derived"
+
+[[case]]
+id = "usable-git-read-only"
+shell = "bash"
+command = "git check-ignore -v zig-out && git cat-file -t HEAD && git ls-tree HEAD src"
+runs = ["git"]
+expect = "allow"
+why = "git that only reads"
+source = "derived"
+
+[[case]]
+id = "usable-git-stash-pop"
+shell = "bash"
+command = "git stash && git pull --rebase && git stash pop"
+runs = ["git"]
+expect = "allow"
+why = "stash and pop keep the work"
+source = "derived"
+
+[[case]]
+id = "usable-python-version-name"
+shell = "bash"
+command = "python3.12 -m pytest -q"
+runs = ["python3.12", "pytest"]
+expect = "allow"
+why = "python3.12 is python"
+source = "derived"
+
+[[case]]
+id = "usable-ulimit"
+shell = "bash"
+command = "ulimit -s unlimited; python -m pytest -q"
+runs = ["ulimit", "python", "pytest"]
+expect = "allow"
+why = "ulimit is a builtin"
+source = "derived"

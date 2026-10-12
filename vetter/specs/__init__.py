@@ -74,6 +74,8 @@ class Spec:
     strict: set
     switches: set
     families: list
+    # (an option after which the rest are its code's arguments: python -m)
+    final: list
 
 
 def _spec(s):
@@ -88,7 +90,7 @@ def _spec(s):
                 bool(s.subcommands), bool(s.stop_at_operand), bool(s.single_dash_long), bool(s.slash_options),
                 bool(s.readonly), dict(s.config), {k: _spec(v) for k, v in s.sub.items()}, set(s.commands),
                 bool(s.stdin_program), list(s.attached), dict(s.anywhere), bool(s.response_files),
-                list(s.pattern_options), set(s.strict), set(s.switches), list(s.families))
+                list(s.pattern_options), set(s.strict), set(s.switches), list(s.families), list(s.final))
 
 
 SPECS = {name: _spec(s) for name, s in py_specs.SPECS.items()}
@@ -228,6 +230,10 @@ def parse(args, spec):
     i = 0
     dd = False
     while i < len(args):
+        if len(options) > 0 and options[len(options) - 1][0] in spec.final \
+                and options[len(options) - 1][1] is not None:
+            # (python -m pytest -x: -x is pytest's, not python's)
+            return Parsed(options, operands, len(args))
         a = args[i]
         s = field_static(a) if field_known(a) else None
         if spec.slash_options and s is not None and is_slash_option(s):
@@ -934,6 +940,9 @@ def role(rt, w, e, ctx, r, value, option, spec):
             inner(rt, w, e, [value], ctx, labelled(name, option), {})
         else:
             unknown(rt, w, labelled(name, option) + ": runs a program only running tells", e.span, ctx, "code", [])
+    elif r == "code_file" and field_known(value) and field_static(value) == "-" and option is None:
+        # (python -, bash -: the program on its stdin, stdin_program's)
+        pass
     elif r == "code_file":
         e.roles.append(Role("read", value, option))
         unknown(rt, w, joined(name, option) + ": runs the code in " + field_text(value), e.span, ctx, "code_file",
@@ -961,6 +970,29 @@ def role(rt, w, e, ctx, r, value, option, spec):
                 code(rt, w, val if "/" in first else "git-credential-" + val, ctx, e.span, "git " + key, False, None)
         elif cr is not None and cr != "plain":
             role(rt, w, e, ctx, cr, Field([val], False, False), "-c " + key, spec)
+    elif r == "python_module":
+        # (python -m pytest ARGS: pytest's, read by its spec; -m http.server,
+        # a server; another module, the project's own code where it runs)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": a module only running tells", e.span, ctx, "code", [])
+            return
+        m = field_static(value)
+        rest = []
+        for k in range(1, len(e.argv)):
+            s = field_static(e.argv[k])
+            if s == "-m" and k + 1 < len(e.argv):
+                rest = e.argv[k + 2 :]
+                break
+            if s is not None and s.startswith("-m") and len(s) > 2 and not s.startswith("--"):
+                rest = e.argv[k + 1 :]
+                break
+        if m in PYTHON_MODULE_TOOLS:
+            inner(rt, w, e, [Field([PYTHON_MODULE_TOOLS[m]], False, False)] + rest, ctx, str(name) + " -m " + m, {})
+        elif m in PYTHON_MODULE_SERVERS:
+            unknown(rt, w, str(name) + " -m " + m + ": serves the folder it runs in", e.span, ctx, "package", [])
+        else:
+            unknown(rt, w, str(name) + " -m " + m + ": runs the module, the project's own or an installed one",
+                    e.span, ctx, "project_code", [])
     elif r == "trace_file":
         # (GIT_TRACE=/path: the trace written there; 1, 2, true: stderr)
         if not field_known(value):
@@ -1182,6 +1214,15 @@ def role(rt, w, e, ctx, r, value, option, spec):
         unknown(rt, w, labelled(name, option) + " " + field_text(value) + ": sets what it runs", e.span, ctx,
                 "configured", [])
 
+
+# Where a program finds the code it loads (not the programs it runs, PATH):
+# each folder's code, as the project's own where it is
+MODULE_PATHS = {"PYTHONPATH", "NODE_PATH", "PERL5LIB", "PERLLIB", "RUBYLIB", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"}
+
+# python -m MODULE: the modules that are a tool vetter has a spec for; the
+# ones that serve the folder they run in
+PYTHON_MODULE_TOOLS = {"pytest": "pytest", "py.test": "pytest", "pip": "pip", "pip3": "pip", "uv": "uv"}
+PYTHON_MODULE_SERVERS = {"http.server", "SimpleHTTPServer", "CGIHTTPServer", "smtpd", "xmlrpc.server", "pydoc"}
 
 # java -XX:KEY=PATH: files the JVM writes, paths its classes come from
 JAVA_XX_WRITES = {"LogFile", "ErrorFile", "HeapDumpPath", "ReplayDataFile", "PerfDataSaveFile", "SharedArchiveFile",
@@ -2089,6 +2130,14 @@ def apply_env(rt, w, e, ctx):
                 expanded_later(rt, w, copy(ctx), e.span, var, field_static(value))
             else:
                 unknown(rt, w, var + ": a value a shell expands, only running tells", e.span, ctx, "code", [])
+            continue
+        if r == "lookup_path" and var in MODULE_PATHS and field_known(value):
+            # (PYTHONPATH=src:lib: the code loaded from each folder, the
+            # project's own where it is; an empty part, where it runs)
+            for d in field_static(value).split(":"):
+                folder = Field([d if d != "" else "."], False, False)
+                unknown(rt, w, var + "=" + field_text(value) + ": " + who + " loads code from " + field_text(folder),
+                        e.span, ctx, "project_code", [folder])
             continue
         if r == "lookup_path":
             unknown(rt, w, var + "=" + field_text(value) + ": which programs " + who + " runs depends on it", e.span, ctx,

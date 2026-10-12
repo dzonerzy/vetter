@@ -15,14 +15,14 @@ the reason. A decision is logged (log.py) unless the policy says `log off`.
 
 import sys
 from dataclasses import dataclass
-from os import getcwd
+from os import getcwd, getenv
 
 import zgram
 
 from .. import paths
 from ..check import check
 from ..jsontext import dumps, loads
-from ..places import home_dir, load_policy, log_path, native_shell, project_root, temp_dirs, written_path
+from ..places import home_dir, load_policy, log_path, native_shell, temp_dirs, workspace_project, written_path
 from ..policy.language import followed, where
 from . import log, written
 
@@ -40,6 +40,20 @@ class Call:
     shell: object
     # (Cursor's preToolUse, Cline's CLI: answered their way)
     mode: str
+
+
+def workspace_of(agent, request):
+    """The folder the user opened the agent in, as the agent tells its
+    hooks: Claude Code's CLAUDE_PROJECT_DIR (Gemini's GEMINI_PROJECT_DIR),
+    Cursor's and Copilot's workspace roots; None: not told."""
+    if agent == "claude":
+        return getenv("CLAUDE_PROJECT_DIR")
+    if agent == "gemini":
+        return getenv("GEMINI_PROJECT_DIR") or getenv("CLAUDE_PROJECT_DIR")
+    roots = request.get("workspace_roots") or request.get("workspaceRoots")
+    if isinstance(roots, list) and len(roots) > 0 and isinstance(roots[0], str):
+        return roots[0]
+    return None
 
 
 def cant_ask(decision, reason):
@@ -239,7 +253,8 @@ def decide(rt, agent, request, policy_path):
     cwd = call.cwd if isinstance(call.cwd, str) and call.cwd else getcwd()
     home = home_dir()
     policy = load_policy(rt, policy_path, cwd, home)
-    d = check(rt, policy, call.command, call.shell, cwd, home, project_root(cwd, home), temp_dirs(home, True))
+    project = workspace_project(cwd, home, workspace_of(agent, request))
+    d = check(rt, policy, call.command, call.shell, cwd, home, project, temp_dirs(home, True))
     if policy.log:
         log.record(rt, agent, cwd, call.command, d, log_path(home))
     written.record_decision(d, policy.written, written_path(home))

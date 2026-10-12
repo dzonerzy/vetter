@@ -345,7 +345,9 @@ def file_actions(e):
     for r in e.roles:
         # (reading or writing <(cmd), >(cmd): a pipe, cmd decided on its own)
         pipe = r.role != "delete" and is_procsub(r.value)
-        if (r.role == "write" or r.role == "read" or r.role == "delete") and not pipe:
+        # (an operand `-`: its stdin or stdout, not a file)
+        dash = r.role != "delete" and field_known(r.value) and field_static(r.value) == "-"
+        if (r.role == "write" or r.role == "read" or r.role == "delete") and not pipe and not dash:
             out.append(Action(r.role, absolute(e.cwd, r.value), None, None, field_text(r.value)))
     for r in e.redirects:
         if r.target is None or r.op == ">&" or r.op == "<&":
