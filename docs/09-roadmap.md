@@ -168,6 +168,8 @@ Status:
 
 ## Later
 
+- The other interpreters' inline code read as Python's is
+  ([13](13-python.md)): `node -e`, `perl -e`, `ruby -e`.
 - zsh and POSIX sh differences in full.
 - File-edit and MCP tool policies with the same language.
 - Shared policy packs (per stack: node, python, rust, infra).

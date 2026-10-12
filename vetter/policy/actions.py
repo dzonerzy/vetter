@@ -37,6 +37,9 @@ class Action:
     text: str
     # (the folder a tool works on, its path: not a program found there)
     folder: bool = False
+    # (asked for by the code a program is given (python -c): not the
+    # program's own doing, a rule allowing the program doesn't cover it)
+    inline: bool = False
 
 
 def action_text(a):
@@ -317,6 +320,12 @@ def execution_part(e, home):
     if sending:
         for h, text in hosts:
             actions.append(Action("send", None, h, None, text))
+    for r in e.roles:
+        if r.role == "code_url" or r.role == "code_send":
+            known = field_known(r.value)
+            actions.append(Action("network" if r.role == "code_url" else "send", None,
+                                  url_host(field_static(r.value)) if known else None, None,
+                                  field_static(r.value) if known else field_text(r.value), False, True))
     dynamic = False
     for a in e.argv:
         if not field_known(a):

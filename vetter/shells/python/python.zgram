@@ -1,0 +1,174 @@
+# Python 3's syntax (3.8 to 3.13, as agents write it), read after
+# scan.mark: one logical line each, \x0e before a line indented more, \x0f
+# for each level a line goes back to. Not here (an error, vetter can't
+# read it): match statements, type parameters, the `type` statement.
+
+file          = (blank | statement)* !.
+
+# Lines
+@silent blank = sp comment? '\n'
+@silent sp    = [ \t\x0c]*
+comment       = '#' [^\n]*
+@silent eol   = sp comment? ('\n' | &(sp '\x0f') | !.)
+@silent gap   = blank*
+
+statement     = sp (compound | simple_stmts)
+simple_stmts  = small (sp ';' sp small)* (sp ';')? eol
+block         = sp ':' sp (simple_stmts | comment? '\n' gap sp '\x0e' (blank | statement)* sp '\x0f')
+
+# Compound statements
+@silent compound = if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated
+                 | async_stmt
+if_stmt       = 'if' kw sp test:named_expr block elif_part* else_part?
+elif_part     = gap sp 'elif' kw sp test:named_expr block
+else_part     = gap sp 'else' kw block
+while_stmt    = 'while' kw sp test:named_expr block else_part?
+for_stmt      = 'for' kw sp targets sp 'in' kw sp star_exprs block else_part?
+try_stmt      = 'try' kw block (except_part+ else_part? finally_part? | finally_part)
+except_part   = gap sp 'except' kw (sp '*')? (sp expr (sp 'as' kw sp name)?)? block
+finally_part  = gap sp 'finally' kw block
+with_stmt     = 'with' kw sp ('(' sp with_item (sp ',' sp with_item)* (sp ',')? sp ')' &(sp ':')
+                              | with_item (sp ',' sp with_item)*) block
+with_item     = expr (sp 'as' kw sp target)?
+funcdef       = 'def' kw sp name sp '(' sp params? sp ')' (sp '->' sp expr)? block
+classdef      = 'class' kw sp name (sp '(' sp args? sp ')')? block
+decorated     = (decorator gap sp)+ (funcdef | classdef | async_stmt)
+decorator     = '@' sp named_expr eol
+async_stmt    = 'async' kw sp (funcdef | with_stmt | for_stmt)
+
+params        = param (sp ',' sp param)* (sp ',')?
+param         = '**' sp name annotation? | '*' (sp name annotation?)? | '/' | name annotation? (sp '=' sp expr)?
+@silent annotation = sp ':' sp expr
+
+# Simple statements
+@silent small = pass_stmt | break_stmt | continue_stmt | return_stmt | raise_stmt | global_stmt
+              | nonlocal_stmt | del_stmt | import_stmt | from_stmt | assert_stmt | assign | aug_assign
+              | ann_assign | expr_stmt
+pass_stmt     = 'pass' kw
+break_stmt    = 'break' kw
+continue_stmt = 'continue' kw
+return_stmt   = 'return' kw (sp star_exprs)?
+raise_stmt    = 'raise' kw (sp expr (sp 'from' kw sp expr)?)?
+global_stmt   = 'global' kw sp name (sp ',' sp name)*
+nonlocal_stmt = 'nonlocal' kw sp name (sp ',' sp name)*
+del_stmt      = 'del' kw sp targets
+import_stmt   = 'import' kw sp dotted_as (sp ',' sp dotted_as)*
+dotted_as     = dotted (sp 'as' kw sp alias:name)?
+dotted        = name (sp '.' sp name)*
+from_stmt     = 'from' kw sp dots? (sp dotted)? sp 'import' kw sp
+                (star_import | '(' sp import_as (sp ',' sp import_as)* (sp ',')? sp ')' | import_as (sp ',' sp import_as)*)
+star_import   = '*'
+dots          = ('...' | '.')+
+import_as     = name (sp 'as' kw sp alias:name)?
+assert_stmt   = 'assert' kw sp expr (sp ',' sp expr)?
+assign        = (targets sp '=' !'=' sp)+ rhs
+aug_assign    = target sp augop sp rhs
+augop         = '+=' | '-=' | '**=' | '*=' | '//=' | '/=' | '%=' | '@=' | '&=' | '|=' | '^=' | '>>=' | '<<='
+ann_assign    = target sp ':' sp expr (sp '=' sp rhs)?
+rhs           = yield_expr | star_exprs
+expr_stmt     = yield_expr | star_exprs
+
+# Targets (what's assigned to)
+targets       = target_item (sp ',' sp target_item)* (sp ',')?
+@silent target_item = starred_target | target
+starred_target = '*' sp target
+target        = primary | '(' sp targets? sp ')' | '[' sp targets? sp ']'
+
+# Expressions, by precedence
+star_exprs    = star_expr (sp ',' sp star_expr)* (sp ',')?
+@silent star_expr = starred | named_expr
+starred       = '*' sp bitor
+named_expr    = walrus | expr
+walrus        = name sp ':=' sp expr
+expr          = lambdef | ternary | disjunction
+ternary       = disjunction sp 'if' kw sp disjunction sp 'else' kw sp expr
+lambdef       = 'lambda' kw (sp lambda_params)? sp ':' sp expr
+# (a lambda's parameters: no annotations, its : the body's)
+lambda_params = lambda_param (sp ',' sp lambda_param)* (sp ',')?
+lambda_param  = '**' sp name | '*' (sp name)? | '/' | name (sp '=' sp expr)?
+yield_expr    = 'yield' kw (sp 'from' kw sp expr | sp star_exprs)?
+disjunction   = conjunction (sp 'or' kw sp conjunction)*
+conjunction   = inversion (sp 'and' kw sp inversion)*
+inversion     = not_op | comparison
+not_op        = 'not' kw sp inversion
+comparison    = bitor (sp comp_op sp bitor)*
+comp_op       = '==' | '!=' | '<=' | '>=' | '<' !'<' | '>' !'>' | 'not' kw sp 'in' kw | 'in' kw
+              | 'is' kw sp 'not' kw | 'is' kw
+bitor         = bitxor (sp '|' !'=' sp bitxor)*
+bitxor        = bitand (sp '^' !'=' sp bitand)*
+bitand        = shift (sp '&' !'=' sp shift)*
+shift         = sum (sp shiftop sp sum)*
+shiftop       = ('<<' | '>>') !'='
+sum           = term (sp addop sp term)*
+addop         = [+\-] !'='
+term          = factor (sp mulop sp factor)*
+mulop         = ('//' | '*' | '/' | '%' | '@') !'='
+factor        = unary | power
+unary         = unop sp factor
+unop          = [+\-~]
+power         = await_primary (sp '**' sp factor)?
+@silent await_primary = await | primary
+await         = 'await' kw sp primary
+primary       = atom trailer*
+@silent trailer = sp (call | subscript | attribute)
+call          = '(' sp args? sp ')'
+subscript     = '[' sp slices sp ']'
+attribute     = '.' sp name
+
+args          = arg (sp ',' sp arg)* (sp ',')?
+@silent arg   = kwsplat | starred | keyword_arg | genexp_arg | named_expr
+kwsplat       = '**' sp expr
+keyword_arg   = name sp '=' !'=' sp expr
+genexp_arg    = named_expr comp_for
+slices        = slice (sp ',' sp slice)* (sp ',')?
+slice         = range_slice | starred | named_expr
+range_slice   = (expr sp)? ':' (sp expr)? (sp ':' (sp expr)?)?
+
+comp_for      = (sp 'async' kw)? sp 'for' kw sp targets sp 'in' kw sp disjunction comp_if* comp_for?
+comp_if       = sp 'if' kw sp disjunction
+
+# Atoms
+@silent atom  = strings | number | constant | ellipsis | name | paren | list_display | brace_display
+constant      = ('None' | 'True' | 'False') kw
+ellipsis      = '...'
+paren         = '(' sp (yield_expr | named_expr comp_for | star_exprs)? sp ')'
+list_display  = '[' sp (named_expr comp_for | star_exprs)? sp ']'
+brace_display = '{' sp (dict_comp | dict_items | set_comp | star_exprs)? sp '}'
+dict_items    = dict_item (sp ',' sp dict_item)* (sp ',')?
+dict_item     = '**' sp bitor | key:expr sp ':' sp value:expr
+dict_comp     = key:expr sp ':' sp value:expr comp_for
+set_comp      = named_expr comp_for
+
+name          = !keyword [A-Za-z_\x80-\xff] [A-Za-z0-9_\x80-\xff]*
+@silent kw    = ![A-Za-z0-9_\x80-\xff]
+@silent keyword = ('False' | 'None' | 'True' | 'and' | 'as' | 'assert' | 'async' | 'await' | 'break' | 'class'
+                  | 'continue' | 'def' | 'del' | 'elif' | 'else' | 'except' | 'finally' | 'for' | 'from'
+                  | 'global' | 'if' | 'import' | 'in' | 'is' | 'lambda' | 'nonlocal' | 'not' | 'or' | 'pass'
+                  | 'raise' | 'return' | 'try' | 'while' | 'with' | 'yield') kw
+
+number        = ('0' [xX] '_'? [0-9a-fA-F] [0-9a-fA-F_]* | '0' [oO] '_'? [0-7] [0-7_]* | '0' [bB] '_'? [01] [01_]*
+                | (digits ('.' digits?)? | '.' digits) ([eE] [+\-]? digits)? [jJ]?) kw
+@silent digits = [0-9] [0-9_]*
+
+# Strings: adjacent ones are one; an f-string's fields are expressions
+strings       = string (sp string)*
+@silent string = fstring | plain
+plain         = [rRbBuU]? [rRbB]? (tdq | tsq | dq | sq)
+@silent tdq   = '"""' ('\\' . | !'"""' .)* '"""'
+@silent tsq   = "'''" ('\\' . | !"'''" .)* "'''"
+@silent dq    = '"' ('\\' . | [^"\\\n])* '"'
+@silent sq    = "'" ('\\' . | [^'\\\n])* "'"
+fstring       = fprefix (f_tdq | f_tsq | f_dq | f_sq)
+fprefix       = [fF] [rR]? | [rR] [fF]
+@silent f_tdq = '"""' (fescape | fbrace | field | ftext_tdq)* '"""'
+@silent f_tsq = "'''" (fescape | fbrace | field | ftext_tsq)* "'''"
+@silent f_dq  = '"' (fescape | fbrace | field | ftext_dq)* '"'
+@silent f_sq  = "'" (fescape | fbrace | field | ftext_sq)* "'"
+fbrace        = '{{' | '}}'
+ftext_tdq     = (!'"""' [^\\{}])+
+ftext_tsq     = (!"'''" [^\\{}])+
+ftext_dq      = [^"\\{}\n]+
+ftext_sq      = [^'\\{}\n]+
+fescape       = '\\' [^{}] | '\\' &[{}]
+field         = '{' sp (yield_expr | star_exprs) sp ('=' sp)? ('!' [rsa] sp)? (':' fspec*)? '}'
+@silent fspec = '{' sp (yield_expr | star_exprs) sp '}' | [^{}\n"']+

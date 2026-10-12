@@ -111,6 +111,9 @@ class Execution:
     # (what it reads another command's output through, not on its stdin:
     # bash <(curl ...), the curl)
     fed: object = None
+    # (python given its program, its code read (-c CODE): what's piped
+    # into it is data, what the code does with it followed)
+    given: bool = False
 
 
 def execution(argv, env, redirects, cwd, span, via, stdin, kind):

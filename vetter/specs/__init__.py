@@ -662,14 +662,18 @@ def spec_roles(rt, w, e, ctx):
 def stdin_program(rt, w, e, ctx, spec, p):
     """An interpreter given no program (no script, no -c, -e, -m), or `-`:
     its program is what's on its stdin. A file redirected in: code in it;
-    a here-document, a here-string, a pipe: code vetter doesn't read."""
+    a here-document, a here-string, a pipe: code vetter doesn't read
+    (python's, known: read)."""
     from ..shells.bash.resolve import exec_name, unknown
+    from ..shells.python.resolve import python_code
 
     for opt, _ in p.options:
         r = spec.roles[opt] if opt in spec.roles else None
         # (the program given: code (-c, -e), python's module (-m); node's -r,
         # perl's -M only load one before it)
         if r is not None and (r.startswith("code:") or (r == "package" and opt == "-m" and spec.names[0] == "python")):
+            # (python -c CODE, read: what's piped into it, data)
+            e.given = r == "code:python"
             return
     if len(p.operands) > 0 and not (field_known(p.operands[0]) and field_static(p.operands[0]) == "-"):
         return
@@ -682,9 +686,86 @@ def stdin_program(rt, w, e, ctx, spec, p):
         e.roles.append(Role("read", path, None))
         unknown(rt, w, name + ": runs the code in " + field_text(path) + " (its stdin)", e.span, ctx, "code_file",
                 [path])
+    elif e.stdin is not None and spec.names[0] == "python" and stdin_text(e) is not None:
+        rest = []
+        for k in range(1, len(e.argv)):
+            if field_static(e.argv[k]) == "-":
+                rest = e.argv[k + 1 :]
+                break
+        python_code(rt, w, e, ctx, stdin_text(e), name + " (its stdin)", [Field(["-"], False, False)] + rest,
+                    python_isolated(e))
     elif e.stdin is not None:
         unknown(rt, w, name + ": runs the program on its stdin, code vetter doesn't read", e.span, ctx,
                 "inline_code", [])
+
+
+def stdin_text(e):
+    """The text on the command's stdin when known: a here-document's, a
+    here-string's, what `echo TEXT |` prints."""
+    from ..shells.bash.resolve import echo_output, exec_name
+
+    if e.stdin.text is not None:
+        return e.stdin.text
+    p = e.stdin.producer
+    if p is None:
+        return None
+    name = exec_name(p)
+    if name != "echo" and name != "printf":
+        return None
+    words = []
+    for a in p.argv[1:]:
+        if not field_known(a):
+            return None
+        words.append(field_static(a))
+    return echo_output(name, words)
+
+
+def python_inline(rt, w, e, ctx, value, option):
+    """python -c CODE ARGS: the code read and followed (sys.argv: -c and
+    ARGS)."""
+    from ..shells.bash.resolve import exec_name
+    from ..shells.python.resolve import python_code
+
+    rest = None
+    for k in range(len(e.argv)):
+        if e.argv[k] is value:
+            rest = e.argv[k + 1 :]
+    if rest is None:
+        # (-cCODE: what follows the word it's glued in)
+        rest = []
+        for k in range(1, len(e.argv)):
+            s = field_static(e.argv[k])
+            if s is not None and s.startswith("-c") and field_static(value) == s[2:]:
+                rest = e.argv[k + 1 :]
+                break
+    python_code(rt, w, e, ctx, field_static(value), str(exec_name(e)) + " " + str(option),
+                [Field(["-c"], False, False)] + rest, python_isolated(e))
+
+
+# Python's single-letter options that take no value
+PYTHON_FLAGS = "bBdEhiIOPqsSuvx"
+
+
+def python_isolated(e):
+    """-I, -P, PYTHONSAFEPATH: the current folder isn't on python's module
+    path (a json.py there isn't what `import json` runs)."""
+    if "PYTHONSAFEPATH" in e.env and field_known(e.env["PYTHONSAFEPATH"]) \
+            and field_static(e.env["PYTHONSAFEPATH"]) != "":
+        return True
+    for a in e.argv[1:]:
+        s = field_static(a)
+        if s is None or not s.startswith("-") or s.startswith("--") or len(s) < 2:
+            break
+        letters = s[1:]
+        flags = True
+        for c in letters:
+            if c not in PYTHON_FLAGS:
+                flags = False
+        if flags and ("I" in letters or "P" in letters):
+            return True
+        if not flags:
+            break
+    return False
 
 
 def flag(rt, w, e, ctx, label, value, given):
@@ -950,6 +1031,8 @@ def role(rt, w, e, ctx, r, value, option, spec):
     elif r == "package" or r == "package_script":
         what = "the package's script" if r == "package_script" else "the package"
         unknown(rt, w, str(name) + ": runs " + what + " " + field_text(value), e.span, ctx, r, [])
+    elif r == "code:python" and field_known(value):
+        python_inline(rt, w, e, ctx, value, option)
     elif r.startswith("code:"):
         unknown(rt, w, str(name) + " " + str(option) + ": runs " + r[5:] + " code vetter doesn't read", e.span, ctx,
                 "inline_code", [])

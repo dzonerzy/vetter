@@ -1,0 +1,179 @@
+# Python snippets agents run: read, they only do what they say.
+
+[[case]]
+id = "py-print"
+shell = "bash"
+command = "python3 -c 'print(1 + 1)'"
+runs = ["python3"]
+expect = "allow"
+why = "computes"
+source = "derived"
+
+[[case]]
+id = "py-json-field"
+shell = "bash"
+command = '''python3 -c 'import json; print(json.load(open("package.json"))["name"])' '''
+runs = ["python3"]
+expect = "allow"
+why = "reads a project file"
+source = "derived"
+
+[[case]]
+id = "py-json-stdin"
+shell = "bash"
+command = '''cat package.json | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])' '''
+runs = ["cat", "python3"]
+expect = "allow"
+why = "parses its stdin"
+source = "derived"
+
+[[case]]
+id = "py-write-project"
+shell = "bash"
+command = '''python3 -c "with open('out.txt', 'w') as f: f.write('hi')"'''
+runs = ["python3"]
+expect = "allow"
+why = "writes in the project"
+source = "derived"
+
+[[case]]
+id = "py-pathlib-glob"
+shell = "bash"
+command = '''python3 -c 'from pathlib import Path; [print(p) for p in Path("src").glob("*.c")]' '''
+runs = ["python3"]
+expect = "allow"
+why = "lists project files"
+source = "derived"
+
+[[case]]
+id = "py-git-status"
+shell = "bash"
+command = '''python3 -c 'import subprocess; print(subprocess.run(["git", "status"], capture_output=True, text=True).stdout)' '''
+runs = ["python3", "git"]
+expect = "allow"
+why = "runs git status"
+source = "derived"
+
+[[case]]
+id = "py-makedirs"
+shell = "bash"
+command = '''python3 -c 'import os; os.makedirs("build/out", exist_ok=True)' '''
+runs = ["python3"]
+expect = "allow"
+why = "makes folders in the project"
+source = "derived"
+
+[[case]]
+id = "py-heredoc-regex"
+shell = "bash"
+command = '''python3 - <<'EOF'
+import re
+text = open("README.md").read()
+m = re.search(r"read(me)?", text)
+print(m.group(0) if m else "none")
+EOF'''
+runs = ["python3"]
+expect = "allow"
+why = "a here-document's code: reads and computes"
+source = "derived"
+
+[[case]]
+id = "py-argv"
+shell = "bash"
+command = '''python3 -c 'import sys; print(sys.argv[1].upper())' hello'''
+runs = ["python3"]
+expect = "allow"
+why = "its arguments"
+source = "derived"
+
+[[case]]
+id = "py-function"
+shell = "bash"
+command = '''python3 -c 'def f(x):
+    return x * 2
+print(f(21))' '''
+runs = ["python3"]
+expect = "allow"
+why = "a function of its own"
+source = "derived"
+
+[[case]]
+id = "py-copy"
+shell = "bash"
+command = '''python3 -c 'import shutil; shutil.copy("README.md", "README.bak")' '''
+runs = ["python3"]
+expect = "allow"
+why = "copies in the project"
+source = "derived"
+
+[[case]]
+id = "py-tempdir"
+shell = "bash"
+command = '''python3 -c 'import tempfile, os; d = tempfile.mkdtemp(); open(os.path.join(d, "x"), "w").write("1")' '''
+runs = ["python3"]
+expect = "allow"
+why = "writes in a temporary folder"
+source = "derived"
+
+[[case]]
+id = "py-echo-pipe"
+shell = "bash"
+command = "echo 'print(42)' | python3"
+runs = ["echo", "python3"]
+expect = "allow"
+why = "its program on its stdin, known"
+source = "derived"
+
+[[case]]
+id = "py-build-cleanup"
+shell = "bash"
+command = '''python3 -c 'import os; [os.remove(os.path.join("build", f)) for f in os.listdir("build")]' '''
+runs = ["python3"]
+expect = "allow"
+why = "deletes build output, as rm build/* does"
+source = "derived"
+
+[[case]]
+id = "py-installed-package"
+shell = "bash"
+command = '''python3 -c 'import numpy; print(numpy.__version__)' '''
+runs = ["python3"]
+expect = "allow"
+why = "an installed package imported where the project is: its code, as pytest's"
+source = "derived"
+
+[[case]]
+id = "py-datetime"
+shell = "bash"
+command = '''python3 -c 'import datetime; print(datetime.datetime.now().strftime("%Y-%m-%d"))' '''
+runs = ["python3"]
+expect = "allow"
+why = "computes"
+source = "derived"
+
+[[case]]
+id = "py-env-copy"
+shell = "bash"
+command = '''python3 -c 'import os, subprocess; env = os.environ.copy(); env["CI"] = "1"; subprocess.run(["make"], env=env)' '''
+runs = ["python3", "make"]
+expect = "allow"
+why = "a harmless variable given to make"
+source = "derived"
+
+[[case]]
+id = "py-sys-path-project"
+shell = "bash"
+command = '''python3 -c 'import sys; sys.path.insert(0, "src"); import json; print(dir(json)[:3])' '''
+runs = ["python3"]
+expect = "allow"
+why = "a project folder first on the module path: the project's code"
+source = "derived"
+
+[[case]]
+id = "py-pipe-json"
+shell = "bash"
+command = '''curl -s https://pypi.org/pypi/zgram/json | python3 -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])' '''
+runs = ["curl", "python3"]
+expect = "allow"
+why = "python -c's code given: what's piped in is data it parses"
+source = "derived"

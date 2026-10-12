@@ -51,6 +51,7 @@ vetter/                  the package: zrun's strict subset of Python (docs/10-na
   shells/bash/           bash.zgram, scan.py (here-documents), syntax.py, expand.py, resolve.py
   shells/powershell/     grammar.py (5.1), syntax.py, cmdlets.py, resolve.py (cmdlets, iex, -EncodedCommand, .NET)
   shells/cmd/            syntax.py (%VAR%, carets, operators, if/for), resolve.py
+  shells/python/         python -c's code: python.zgram, scan.py, resolve.py (followed abstractly), stdlib.py
   specs/                 what programs do with their arguments: *.toml, load.py, the engine
   policy/                policy.zgram, language.py, actions.py, checks.py (lint), trace.py; builtin/
   agents/                hook.py (9 agents), log.py (secrets masked), install.py, importing.py
@@ -63,14 +64,18 @@ tools/                   run from here: python -m tools.<dir>.<tool>
   powershell/            PowerShell's own parser as the reference: pwshdiff, pwshfuzz, probe
   compare/               the corpus through tree-sitter-bash; dcg and cc-safety-net as hooks (guards.py)
   oracle/                commands run for real: Linux in bubblewrap under strace, cmd and PowerShell
-                         on Windows (from WSL); their variants (mutate.py, winmutate.py)
+                         on Windows (from WSL); their variants (mutate.py, winmutate.py); Python
+                         programs made to mislead (pyfuzz.py)
+  python/                Python's reading against CPython's parser (pydiff), its values against
+                         Python's (valuediff)
 docs/                    the design
 ```
 
 ## Status
 
 bash, PowerShell and cmd.exe are read and decided by one policy language
-(M0-M3b, see the roadmap). See [docs/](docs/):
+(M0-M3b, see the roadmap), and the Python code given to `python -c` is read
+and followed too ([13](docs/13-python.md)). See [docs/](docs/):
 
 1. [The problem, with evidence](docs/01-problem.md)
 2. [Goals and non-goals](docs/02-goals.md)

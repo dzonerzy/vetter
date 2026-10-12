@@ -282,6 +282,57 @@ def worth_deciding(verb, path):
 PROBES = {"read": "cat -- {}", "write": ": > {}", "delete": "rm -f -- {}", "run": "{}"}
 
 
+class Harness:
+    """Commands decided and run in the sandbox: decide(command), and
+    compared(command, decision): what it did, each effect decided, the
+    ones stricter than the decision ([(verb, path, probe)])."""
+
+    def __init__(self, policy, timeout):
+        self.p = engine.call("load_text", open(policy).read(), policy)
+        self.root = project_root(PROJECT, HOME)
+        self.timeout = timeout
+        self.probed = {}
+        self.scratch = tempfile.mkdtemp(prefix="vetter-oracle-")
+        self.base = os.path.join(self.scratch, "template")
+        template(self.base)
+
+    def decide(self, command):
+        if command not in self.probed:
+            self.probed[command] = engine.call("check", self.p, command, "bash", PROJECT, HOME, self.root, None)
+        return self.probed[command]
+
+    def compared(self, command, d):
+        world = os.path.join(self.scratch, "w")
+        out = os.path.join(self.scratch, "out")
+        shutil.rmtree(world, ignore_errors=True)
+        shutil.rmtree(out, ignore_errors=True)
+        shutil.copytree(self.base, world, symlinks=True)
+        os.makedirs(out)
+        sandboxed(world, out, command, self.timeout)
+        found = []
+        seen = set()
+        for verb, path in effects(out):
+            if (verb, path) in seen or not worth_deciding(verb, path):
+                continue
+            seen.add((verb, path))
+            probe = self.decide(PROBES[verb].format(shlex.quote(path)))
+            if verb == "read" and probe.decision != "deny" and path.startswith(HOME + "/"):
+                # (a tool reading its settings in the home, ~/.gitconfig:
+                # what matters there is a secret's, which is denied)
+                continue
+            if ORDER[probe.decision] > ORDER[d.decision]:
+                found.append((verb, path, probe))
+        return found
+
+    def close(self):
+        shutil.rmtree(self.scratch, ignore_errors=True)
+
+
+def show(found):
+    for verb, path, probe in found:
+        print(f"      {verb:6s} {path}  -> {probe.decision}: {probe.reason[:90]}")
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--policy", default=str(STOCK))
@@ -292,51 +343,12 @@ def main(argv):
     ap.add_argument("--mutate", action="store_true",
                     help="each attack's variants (mutate.py): the ones vetter allows run and compared")
     args = ap.parse_args(argv)
-    p = engine.call("load_text", open(args.policy).read(), args.policy)
-    root = project_root(PROJECT, HOME)
-    probed = {}
-
-    def decide(command):
-        if command not in probed:
-            probed[command] = engine.call("check", p, command, "bash", PROJECT, HOME, root, None)
-        return probed[command]
-
-    scratch = tempfile.mkdtemp(prefix="vetter-oracle-")
-    base = os.path.join(scratch, "template")
-
-    def compared(command, d):
-        """What command did, decided: [(verb, path, decision)] stricter
-        than d."""
-        world = os.path.join(scratch, "w")
-        out = os.path.join(scratch, "out")
-        shutil.rmtree(world, ignore_errors=True)
-        shutil.rmtree(out, ignore_errors=True)
-        shutil.copytree(base, world, symlinks=True)
-        os.makedirs(out)
-        sandboxed(world, out, command, args.timeout)
-        found = []
-        seen = set()
-        for verb, path in effects(out):
-            if (verb, path) in seen or not worth_deciding(verb, path):
-                continue
-            seen.add((verb, path))
-            probe = decide(PROBES[verb].format(shlex.quote(path)))
-            if verb == "read" and probe.decision != "deny" and path.startswith(HOME + "/"):
-                # (a tool reading its settings in the home, ~/.gitconfig:
-                # what matters there is a secret's, which is denied)
-                continue
-            if ORDER[probe.decision] > ORDER[d.decision]:
-                found.append((verb, path, probe))
-        return found
-
-    def show(found):
-        for verb, path, probe in found:
-            print(f"      {verb:6s} {path}  -> {probe.decision}: {probe.reason[:90]}")
-
+    h = Harness(args.policy, args.timeout)
+    decide = h.decide
+    compared = h.compared
     gaps = 0
     ran = 0
     try:
-        template(base)
         for c in corpus.load():
             if c["shell"] != "bash" or args.only not in c["id"]:
                 continue
@@ -370,7 +382,7 @@ def main(argv):
             elif args.v:
                 print(f"ok  {c['id']}: vetter {d.decision}")
     finally:
-        shutil.rmtree(scratch, ignore_errors=True)
+        h.close()
     print(f"\n{ran} commands run, {gaps} with gaps")
     return 1 if gaps else 0
 

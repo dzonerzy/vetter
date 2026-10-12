@@ -962,6 +962,10 @@ def match_rule(pl, m, part, act):
         prod = part.producer
         if prod is None:
             return Why(False, "nothing is piped into it")
+        if not part.unknown and part.what.given:
+            # (python -c CODE: what's piped in is data; code that runs it,
+            # exec(sys.stdin.read()), os.system("sh"), is the code's)
+            return Why(False, "it runs the program it's given, not what's piped into it" if pl.trace else "")
         # (what's piped in through others too: curl | tee log | sh)
         pw = match_item(pl, m.producer, prod, None)
         first = prod
@@ -1163,7 +1167,8 @@ def decide_action(p, pl, part, act):
         for m in rule.matches:
             w = match_rule(pl, m, part, act)
             hidden = act.verb == "run" and act.kind is not None
-            if w.ok and rule.decision == "allow" and m.item[0] == "program" and (act.verb in FILE_VERBS or hidden):
+            if w.ok and rule.decision == "allow" and m.item[0] == "program" \
+                    and (act.verb in FILE_VERBS or hidden or act.inline):
                 # (a program allowed by name: run; what it reads, writes and
                 # deletes the places' rules decide: gcc -E /flag, read x < f;
                 # what it runs that vetter can't see, the rules about that:

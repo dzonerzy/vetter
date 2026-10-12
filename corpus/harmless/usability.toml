@@ -42,8 +42,8 @@ id = "usable-python-stdin-dash"
 shell = "bash"
 command = "python3 -c 'print(1)' > out.txt && cat - < out.txt"
 runs = ["python3", "cat"]
-expect = "ask"
-why = "python -c is code vetter doesn't read (asked); cat - is stdin, not a file named -"
+expect = "allow"
+why = "python -c's code read (it prints); cat - is stdin, not a file named -"
 source = "derived"
 
 [[case]]

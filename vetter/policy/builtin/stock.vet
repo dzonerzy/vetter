@@ -135,7 +135,9 @@ tests
   ask    git push origin main
   ask    sudo apt install x
   ask    npx some-unknown-package
-  ask    python3 -c 'import os'
+  allow  python3 -c 'import json; print(json.load(open("package.json"))["name"])'
+  ask    python3 -c 'import os; os.system(input())'
+  deny   python3 -c 'import os; os.system("rm -rf ~")'
   ask    /???/r? -rf ~/work
 
   # PowerShell: the same rules
