@@ -307,3 +307,60 @@ runs = ["gcc"]
 expect = "ask"
 why = "the preprocessor is given -include /flag: it reads it"
 source = "audit"
+
+# Reported 2026-10-12, after the audit: state env and the shell keep that a
+# command's later words depend on
+
+[[case]]
+id = "state-env-chdir"
+shell = "bash"
+command = "env --chdir=/ cat flag"
+runs = ["env", "cat"]
+expect = "ask"
+why = "env changes directory first: cat reads /flag"
+source = "reported"
+
+[[case]]
+id = "state-env-chdir-prefix"
+shell = "bash"
+command = "env --ch=/ cat flag"
+runs = ["env", "cat"]
+expect = "ask"
+why = "--ch is --chdir, a unique prefix"
+source = "derived"
+
+[[case]]
+id = "state-env-chdir-cluster"
+shell = "bash"
+command = "env -iC/ cat flag"
+runs = ["env", "cat"]
+expect = "ask"
+why = "-iC/ is -i -C /"
+source = "derived"
+
+[[case]]
+id = "state-hash-p"
+shell = "bash"
+command = "hash -p /tmp/x git; git status"
+runs = ["hash", "/tmp/x"]
+expect = "deny"
+why = "hash -p makes git run /tmp/x"
+source = "derived"
+
+[[case]]
+id = "state-alias-next-line"
+shell = "bash"
+command = "shopt -s expand_aliases\nalias ls='cat /flag'\nls"
+runs = ["shopt", "alias", "cat"]
+expect = "ask"
+why = "the alias is read from the next line on"
+source = "derived"
+
+[[case]]
+id = "state-alias-cd"
+shell = "bash"
+command = "alias go='cd /'\ngo; cat flag"
+runs = ["alias", "cd", "cat"]
+expect = "ask"
+why = "the alias moves the shell: cat reads /flag"
+source = "derived"

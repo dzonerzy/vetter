@@ -164,6 +164,9 @@ class Ctx:
     exported: dict
     # (stdin when nothing else says: inside >(...), the outer command's output)
     stdin: object
+    # (what a command's name stands for: ("hash", path) after hash -p PATH
+    # NAME, ("alias", text or None) after alias NAME=TEXT)
+    names: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -180,7 +183,7 @@ class W:
 
 def copy(ctx):
     return Ctx(ctx.cwd, var_copy(ctx.vars), ctx.home, ctx.via, ctx.depth, ctx.span, ctx.parsed, ctx.base,
-               ctx.source, {k: v for k, v in ctx.exported.items()}, ctx.stdin)
+               ctx.source, {k: v for k, v in ctx.exported.items()}, ctx.stdin, {k: v for k, v in ctx.names.items()})
 
 
 def merge_uncertain(ctx, branch):
@@ -903,6 +906,27 @@ def run(rt, w,argv, env, reds, ctx, span, stdin, via):
     name0 = argv[0]
     static0 = field_static(name0)
     known0 = field_known(name0)
+    if known0 and static0 in ctx.names and "/" not in static0:
+        kind0, value0 = ctx.names[static0]
+        if kind0 == "hash":
+            # (hash -p PATH NAME: NAME runs PATH)
+            name0 = Field([value0], False, False)
+            argv = [name0] + argv[1:]
+            static0 = value0
+        else:
+            # (alias NAME=TEXT: NAME's words are TEXT's, read again; not
+            # itself again, as bash doesn't)
+            if value0 is None:
+                unknown(rt, w, static0 + ": an alias only running tells", span, ctx, "code", [])
+                return
+            rest = [quote(field_static(a)) for a in argv[1:] if field_known(a)]
+            if len(rest) != len(argv) - 1:
+                unknown(rt, w, static0 + ": an alias given words only running tells", span, ctx, "code", [])
+            # (in this shell: alias go='cd /' moves it)
+            ctx.names.pop(static0)
+            code(rt, w, value0 + " " + " ".join(rest), ctx, span, "alias " + static0, True, None)
+            ctx.names[static0] = (kind0, value0)
+            return
     name = paths.program_name(static0) if known0 else None
     kind = "program"
     if name is not None and name in w.r.functions and "/" not in (static0 if static0 is not None else ""):
@@ -1244,6 +1268,39 @@ def builtin_effects(rt, w,e, ctx):
         if name == "mapfile" or name == "readarray":
             ctx.vars.values["MAPFILE"] = UNKNOWN
             mapfile_callback(rt, w, e, ctx, name, args)
+    elif name == "alias":
+        # (alias NAME=TEXT: NAME's words are TEXT from the next command on;
+        # whether expand_aliases is on only the shell knows: as if it is)
+        for a in args:
+            s = field_static(a)
+            if s is None:
+                unknown_all(ctx)
+                continue
+            if "=" in s and not s.startswith("-"):
+                n, _, v = s.partition("=")
+                ctx.names[n] = ("alias", v if field_known(a) else None)
+    elif name == "unalias":
+        for a in args:
+            s = field_static(a)
+            if s == "-a":
+                ctx.names = {k: v for k, v in ctx.names.items() if v[0] != "alias"}
+            elif s is not None and s in ctx.names:
+                ctx.names.pop(s)
+    elif name == "hash":
+        # (hash -p PATH NAME: NAME runs PATH; -r forgets them all; -d NAME)
+        for k in range(len(args)):
+            s = field_static(args[k])
+            if s == "-r":
+                ctx.names = {n: v for n, v in ctx.names.items() if v[0] != "hash"}
+            elif s is not None and s.startswith("-") and "p" in s and k + 2 < len(args):
+                p = field_static(args[k + 1])
+                for f in args[k + 2 :]:
+                    n = field_static(f)
+                    if n is None or p is None:
+                        unknown(rt, w, "hash -p with words only running tells", e.span, ctx, "lookup_path", [])
+                    else:
+                        ctx.names[n] = ("hash", p)
+                break
     elif name == "trap":
         trap_action(rt, w, e, ctx, args)
     elif name == "printf":
@@ -1613,54 +1670,112 @@ def simple_wrapper(rt, w,e, ctx, name):
     inner(rt, w,e, args[i + before :], ctx, name, {})
 
 
-def wrap_env(rt, w,e, ctx):
-    args = e.argv[1:]
+# GNU env's long options: None a flag, "value" taking one, "optional" one
+# only glued on (--block-signal=SIG)
+ENV_LONG = {"--ignore-environment": None, "--null": None, "--unset": "value", "--chdir": "value",
+            "--split-string": "value", "--argv0": "value", "--debug": None, "--block-signal": "optional",
+            "--default-signal": "optional", "--ignore-signal": "optional", "--list-signal-handling": None,
+            "--help": None, "--version": None}
+ENV_SHORT = {"u": "--unset", "C": "--chdir", "S": "--split-string", "a": "--argv0"}
+
+
+def env_options(args):
+    """env's options as GNU env reads them (long ones by a unique prefix,
+    short ones clustered: -iC/): ([(--name, value Field or None) or ("=",
+    NAME=VALUE)], the command's index); None: one vetter can't read."""
+    ops = []
     i = 0
-    env = {}
     while i < len(args):
-        a = args[i]
-        if not field_known(a):
-            unknown(rt, w,"env with arguments only running tells", e.span, ctx, "code", [])
-            return
-        s = field_static(a)
-        if s == "-i" or s == "--ignore-environment" or s == "-0" or s == "--null" or s == "-v" or s == "--debug" \
-                or s == "-":
+        # (a word only running tells, a pattern, one that splits: what env
+        # is given, only running tells)
+        if not field_known(args[i]):
+            return None
+        s = field_static(args[i])
+        if s == "--":
+            return ops, i + 1
+        if s == "-":
+            ops.append(("--ignore-environment", None))
             i += 1
-        elif s == "-u" or s == "--unset" or s == "-C" or s == "--chdir":
-            i += 2
-        elif s.startswith("--unset=") or s.startswith("--chdir=") or ((s.startswith("-u") or s.startswith("-C"))
-                                                                       and len(s) > 2):
+            continue
+        if s.startswith("--"):
+            name, eq, val = s.partition("=")
+            found = [o for o in ENV_LONG if o.startswith(name)]
+            if name in ENV_LONG:
+                found = [name]
+            if len(found) != 1:
+                return None
+            kind = ENV_LONG[found[0]]
+            if kind == "value" and eq == "":
+                if i + 1 >= len(args):
+                    return None
+                ops.append((found[0], args[i + 1]))
+                i += 2
+                continue
+            ops.append((found[0], Field([val], False, False) if eq != "" else None))
             i += 1
-        elif s == "-S" or s == "--split-string" or s.startswith("--split-string=") or s.startswith("-S"):
-            text = None
-            if s.startswith("--split-string="):
-                text = s.partition("=")[2]
-            elif len(s) > 2 and s.startswith("-S"):
-                text = s[2:]
-            if text is None:
-                if i + 1 >= len(args) or not field_known(args[i + 1]):
-                    unknown(rt, w,"env -S with a string only running tells", e.span, ctx, "code", [])
-                    return
-                text = field_static(args[i + 1])
-                i += 1
-            # (-S splits its string into words: a command line)
-            quoted = []
-            for f in args[i + 1 :]:
-                if field_known(f):
-                    quoted.append(quote(field_static(f)))
-            code(rt, w,text + " " + " ".join(quoted), ctx, e.span, "env -S", False, None)
-            return
-        elif s == "--":
-            i += 1
-            break
-        elif "=" in s and not s.startswith("-") and s.partition("=")[0] != "":
+            continue
+        if s.startswith("-") and len(s) > 1:
+            k = 1
+            taken = 1
+            while k < len(s):
+                c = s[k]
+                if c in "i0v":
+                    ops.append(("-" + c, None))
+                    k += 1
+                    continue
+                if c not in ENV_SHORT:
+                    return None
+                rest = s[k + 1 :]
+                if rest != "":
+                    ops.append((ENV_SHORT[c], Field([rest], False, False)))
+                elif i + 1 < len(args):
+                    ops.append((ENV_SHORT[c], args[i + 1]))
+                    taken = 2
+                else:
+                    return None
+                break
+            i += taken
+            continue
+        if "=" in s and s.partition("=")[0] != "":
             # (any NAME=VALUE before the command: env sets it, a name bash
             # can't write too, BASH_FUNC_f%%)
-            n, _, v = s.partition("=")
-            env[n] = Field([v], False, False)
+            ops.append(("=", args[i]))
             i += 1
-        else:
-            break
+            continue
+        return ops, i
+    return ops, i
+
+
+def wrap_env(rt, w,e, ctx):
+    args = e.argv[1:]
+    read = env_options(args)
+    if read is None:
+        unknown(rt, w,"env with arguments only running tells", e.span, ctx, "code", [])
+        return
+    ops, i = read
+    env = {}
+    for name, value in ops:
+        if name == "=":
+            n, _, v = field_static(value).partition("=")
+            env[n] = Field([v], False, False)
+        elif name == "--chdir":
+            # (env changes directory first: the command runs there)
+            ctx = copy(ctx)
+            if field_known(value) and ctx.cwd is not None:
+                ctx.cwd = paths.join(ctx.cwd, field_static(value))
+            else:
+                ctx.cwd = None
+        elif name == "--split-string":
+            if not field_known(value):
+                unknown(rt, w,"env -S with a string only running tells", e.span, ctx, "code", [])
+                return
+            # (-S splits its string into words: a command line)
+            quoted = []
+            for f in args[i:]:
+                if field_known(f):
+                    quoted.append(quote(field_static(f)))
+            code(rt, w,field_static(value) + " " + " ".join(quoted), ctx, e.span, "env -S", False, None)
+            return
     inner(rt, w,e, args[i:], ctx, "env", env)
 
 
