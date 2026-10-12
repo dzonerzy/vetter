@@ -86,8 +86,8 @@ shell = "bash"
 command = "find . -name '*.log' -exec rm -rf {} +"
 allowed_by = "find"
 runs = ["find", "rm"]
-expect = "deny"
-why = "find -exec runs a program (Trail of Bits)"
+expect = "ask"
+why = "find -exec runs a program (Trail of Bits): rm, on files under ., asked as find -delete is"
 source = "https://blog.trailofbits.com/2025/10/22/prompt-injection-to-rce-in-ai-agents/"
 
 [[case]]

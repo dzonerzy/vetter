@@ -1825,6 +1825,60 @@ def xargs_arg_files(options):
     return out
 
 
+def xargs_replace(options):
+    """-i, -iR, -I R, --replace[=R]: the string each input line goes in
+    place of; None: its input goes after the command."""
+    out = None
+    k = 0
+    while k < len(options):
+        s = field_static(options[k])
+        if s == "--replace" or s == "-i":
+            out = "{}"
+        elif s.startswith("--replace="):
+            out = s[10:]
+        elif s.startswith("-i") and not s.startswith("--"):
+            out = s[2:]
+        elif s == "-I" and k + 1 < len(options):
+            out = field_static(options[k + 1])
+            k += 1
+        elif s.startswith("-I"):
+            out = s[2:]
+        k += 1
+    return out
+
+
+def xargs_input(e, options):
+    """xargs' arguments when its input is known (`echo a b | xargs`):
+    the words; None: only running tells (-0, -d, -a, -E change how it's
+    read; quotes and backslashes in it)."""
+    for a in options:
+        s = field_static(a)
+        if s is None:
+            return None
+        if s.startswith("--") and (s.startswith("--null") or s.startswith("--delimiter") or s.startswith("--arg-file")
+                                   or s.startswith("--eof")):
+            return None
+        if s.startswith("-") and not s.startswith("--") and ("0" in s or "d" in s or "a" in s or "E" in s or "e" in s):
+            return None
+    if e.stdin is None:
+        return None
+    text = e.stdin.text
+    p = e.stdin.producer
+    if text is None and p is not None:
+        pname = exec_name(p)
+        if (pname == "echo" or pname == "printf") and all_known(p.argv[1:]):
+            text = echo_output(pname, statics(p.argv[1:]))
+    if text is None:
+        return None
+    for c in text:
+        if c == "'" or c == '"' or c == "\\":
+            return None
+    if xargs_replace(options) is not None:
+        # (one argument per line, its leading blanks dropped)
+        return [x.lstrip(" \t") for x in text.split("\n") if x.strip(" \t") != ""]
+    return [x for x in text.replace("\t", " ").replace("\n", " ").split(" ") if x != ""]
+
+
 def skip_options(args, with_arg, long_with_arg):
     """The index of the first operand, skipping options (with_arg: the short
     options taking a value; long_with_arg: the long ones). None: an option
@@ -1902,9 +1956,36 @@ def wrapper(rt, w,e, ctx, name):
         cmd = args[i:]
         if len(cmd) == 0:
             cmd = [Field(["echo"], False, False)]
-        # (its arguments come from its input: unknown, any number)
-        inner(rt, w,e, cmd + [Field([Dynamic(None, "<xargs input>")], False, True)], ctx, "xargs", {})
+        words = xargs_input(e, args[:i])
+        replace = xargs_replace(args[:i])
+        if words is None:
+            # (its arguments come from its input: unknown, any number)
+            inner(rt, w,e, cmd + [Field([Dynamic(None, "<xargs input>")], False, True)], ctx, "xargs", {})
+        elif replace is None:
+            inner(rt, w, e, cmd + [Field([x], False, False) for x in words], ctx, "xargs", {})
+        else:
+            # (-i, -I R: each input line's in place of R)
+            for x in words:
+                each = []
+                for f in cmd:
+                    s = field_static(f)
+                    each.append(Field([s.replace(replace, x)], False, False) if field_known(f) and replace in s
+                                else f)
+                inner(rt, w, e, each, ctx, "xargs", {})
     elif name == "find":
+        # (its starting points: {} is a file under one; several, any)
+        starts = []
+        for a in args:
+            s = field_static(a)
+            if field_known(a) and (s.startswith("-") or s.startswith("(") or s.startswith("!")):
+                break
+            starts.append(a)
+        under = Field([Dynamic(None, "{}")], False, False)
+        if len(starts) <= 1 and (len(starts) == 0 or field_known(starts[0])):
+            top = field_static(starts[0]) if len(starts) == 1 else "."
+            while top.endswith("/") and len(top) > 1:
+                top = top[: len(top) - 1]
+            under = Field([(top if top != "/" else "") + "/*"], False, False)
         i = 0
         while i < len(args):
             a = args[i]
@@ -1918,7 +1999,7 @@ def wrapper(rt, w,e, ctx, name):
                 cmd = []
                 for f in args[i + 1 : j]:
                     if field_known(f) and field_static(f) == "{}":
-                        cmd.append(Field([Dynamic(None, "{}")], False, False))
+                        cmd.append(under)
                     else:
                         cmd.append(f)
                 inner(rt, w,e, cmd, ctx, "find " + s, {})

@@ -84,6 +84,9 @@ class PW:
     # (the stack Push-Location and Pop-Location use: Set-Location
     # -StackName's; "?": one only running tells)
     stack: str = ""
+    # (what $_ is in the command being read: a file under a folder
+    # Get-ChildItem lists; None: not known)
+    item: object = None
 
 
 def walker(r, home, depth):
@@ -175,11 +178,19 @@ def script(rt, pw, tree, cwd, via, source):
     for stmt in body.children:
         if stmt.rule != "statement":
             continue
+        done = set()
+        for fe in nodes_of(stmt, "foreach_stmt", []):
+            foreach_values(rt, pw, fe, done)
+        items = piped_items(rt, pw, stmt)
         for cmd in nodes_of(stmt, "command", []):
+            if cmd.start in done:
+                continue
+            pw.item = items[cmd.start] if cmd.start in items else None
             first = len(pw.r.executions)
             command(rt, pw, cmd)
             if len(pw.r.executions) > first:
                 pw.by_command[cmd.start] = pw.r.executions[first]
+        pw.item = None
         expression_redirects(rt, pw, stmt)
         provider_variables(pw, stmt)
         effects(rt, pw, stmt)
@@ -189,6 +200,94 @@ def script(rt, pw, tree, cwd, via, source):
     for pipe in nodes_of(tree, "pipe", []):
         pipeline(rt, pw, pipe)
     dotnet(rt, pw, tree)
+
+
+def foreach_values(rt, pw, fe, done):
+    """foreach ($p in 'a', 'b') { ... }: its body's commands, once with
+    each value ($p after: the last). Values only running tells, a loop
+    inside: walked as any other statement, $p not known."""
+    kids = [k for k in fe.children if k.rule == "variable" or k.rule == "pipeline" or k.rule == "block"]
+    if len(kids) != 3 or len(nodes_of(kids[2], "foreach_stmt", [])) > 0:
+        return
+    v = values.value(rt, pw, kids[1])
+    vals = v if isinstance(v, list) else [v]
+    if len(vals) == 0 or len(vals) > 16:
+        return
+    for x in vals:
+        if not isinstance(x, str):
+            return
+    name = fold(strip_chars(kids[0].text[1:], "{}"))
+    cmds = nodes_of(kids[2], "command", [])
+    for x in vals:
+        pw.vars[name] = x
+        for cmd in cmds:
+            first = len(pw.r.executions)
+            command(rt, pw, cmd)
+            if len(pw.r.executions) > first and cmd.start not in pw.by_command:
+                pw.by_command[cmd.start] = pw.r.executions[first]
+    for cmd in cmds:
+        done.add(cmd.start)
+
+
+# Commands whose script block gets each item piped in as $_
+ITEM_BLOCKS = {"where-object", "foreach-object", "?", "%", "where", "foreach"}
+LISTING = {"get-childitem", "gci", "ls", "dir"}
+
+
+def piped_items(rt, pw, stmt):
+    """Get-ChildItem PATH | Where-Object { ... $_ ... }: each command in
+    the block, the item it's given: a file under PATH (as find's {})."""
+    out = {}
+    for pipe in nodes_of(stmt, "pipe", []):
+        parts = [k for k in pipe.children if k.rule == "command" or k.rule == "expression"]
+        for i in range(len(parts) - 1):
+            src = parts[i]
+            dst = parts[i + 1]
+            if src.rule != "command" or dst.rule != "command":
+                continue
+            if fold(command_word(src)) not in LISTING or fold(command_word(dst)) not in ITEM_BLOCKS:
+                continue
+            path = listed_path(pw, src)
+            if path is None:
+                continue
+            under = path.rstrip("/\\") + "/*"
+            for c in nodes_of(dst, "command", []):
+                if c.start != dst.start:
+                    out[c.start] = under
+    return out
+
+
+def command_word(cmd):
+    for k in cmd.children:
+        if k.rule == "cmd_name":
+            return literal_word(k.text)
+    return ""
+
+
+def listed_path(pw, cmd):
+    """Get-ChildItem's folder when known: its first value, or -Path's,
+    -LiteralPath's; none given, the current one."""
+    after_param = False
+    for k in cmd.children:
+        if k.rule != "argument" and k.rule != "argument_any":
+            continue
+        t = k.text
+        if t.startswith("-"):
+            low = fold(t.rstrip(":"))
+            if "-path".startswith(low) or "-literalpath".startswith(low):
+                after_param = True
+                continue
+            # (other parameters, switches: -Recurse, -Filter *.tmp)
+            if not ("-recurse".startswith(low) or "-force".startswith(low) or "-file".startswith(low)):
+                return None
+            continue
+        f = fields(pw, k)
+        if len(f) != 1 or not field_known(f[0]):
+            return None
+        return field_static(f[0])
+    if after_param:
+        return None
+    return "."
 
 
 def provider_variables(pw, stmt):
@@ -866,6 +965,10 @@ def atom(pw, n):
         return Field([n.text], False, False)
     if r == "postfix_expr_arg" and len(n.children) > 0:
         first = n.children[0]
+        item = first.rule == "variable" and (fold(first.text) == "$_" or fold(first.text) == "$psitem")
+        if item and pw.item is not None and (first.text == n.text or fold(n.text[len(first.text):]) == ".fullname"):
+            # (Get-ChildItem PATH | % { ... $_.FullName }: a file under PATH)
+            return Field([pw.item], False, False)
         if first.rule == "variable" and first.text == n.text:
             v = variable(pw, first.text)
             if v is not None:

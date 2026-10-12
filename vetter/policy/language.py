@@ -672,6 +672,9 @@ class Places:
     resolved: dict
     # (each name's case key, made once: name_key)
     keys: dict
+    # (the rule being matched allows; its unless clause being matched)
+    allowing: bool = False
+    blocking: bool = False
 
 
 def temp_dirs(home):
@@ -869,8 +872,10 @@ def match_path(pl, a, rel, places):
         return Why(ok, a.text + " is found on PATH, not named by a path" if ok or pl.trace else "")
     if a.path is None:
         where_ = a.text + " (only running tells)" if nonempty(a.text) else "a path only running tells"
-        # (unknown: outside everything, inside nothing)
-        if rel == "outside":
+        # (unknown: inside nothing; outside only to keep an allow from
+        # applying (`unless outside $project`): a rule doesn't deny what
+        # it can't tell, the action is asked)
+        if rel == "outside" and pl.blocking:
             return Why(True, where_ + ": can't be shown in " + show(places))
         return Why(False, where_ + " isn't known to be " + word + " " + show(places) if pl.trace else "")
     # (the first place it's in, or is, decides: no need to look further)
@@ -979,7 +984,9 @@ def match_rule(pl, m, part, act):
         through = " | ... " if prod is not first else " | "
         why = (prod.name if nonempty(prod.name) else "?") + through + why
     for clause_kind, conds in m.clauses:
+        pl.blocking = pl.allowing and clause_kind == "unless"
         results = [match_cond(pl, c, part, act) for c in conds]
+        pl.blocking = False
         if clause_kind == "unless":
             for r in results:
                 if r.ok:
@@ -1164,6 +1171,7 @@ def decide_action(p, pl, part, act):
     steps = []
     for rule in p.rules:
         why = ""
+        pl.allowing = rule.decision == "allow"
         for m in rule.matches:
             w = match_rule(pl, m, part, act)
             hidden = act.verb == "run" and act.kind is not None

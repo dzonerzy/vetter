@@ -53,7 +53,8 @@ def show(decision, command, every_rule=False, only_rule=None):
         lines.append("")
     for p in decision.parts:
         part = p.part
-        via = f"   (via {' <- '.join(part.via)})" if part.via else ""
+        # (an execution's label has its via already: execution_text)
+        via = f"   (via {' <- '.join(part.via)})" if part.via and part.unknown else ""
         lines.append(f"{part.label}{via}")
         for a in p.actions:
             head = f"  {action_text(a.action):<34}"
