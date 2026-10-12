@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vetter"
-version = "0.0.1"
+version = "0.1.0"
 description = "Vets every command your AI agent wants to run: bash read exactly as bash reads it, decided by a policy."
 requires-python = ">=3.11"
 readme = "README.md"
