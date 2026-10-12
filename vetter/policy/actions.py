@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from .. import paths
 from ..paths import fold
-from ..shells.bash.expand import Dynamic, field_known, field_static, field_text
+from ..shells.bash.expand import Dynamic, Field, field_known, field_static, field_text
 from ..shells.bash.resolve import exec_name
 from ..specs import SPECS, parse
 
@@ -311,9 +311,7 @@ def execution_part(e, home):
     fl = flags(e)
     sending = False
     if name in DOWNLOADERS:
-        for f in fl:
-            if f in SENDING_OPTIONS:
-                sending = True
+        sending = sends_local(e)
     for r in e.roles:
         if r.role == "send":
             sending = True
@@ -332,6 +330,61 @@ def execution_part(e, home):
             dynamic = True
     return Part(e, name, positional(e) if name is not None else [], fl, actions, e.via, e.span, dynamic,
                 execution_text(e), None, False, e.words, e.cmdlet)
+
+
+# What a downloader sends from a file always (-T FILE, --post-file FILE)
+FILE_SENDING = {"-T", "--upload-file", "--post-file", "--body-file"}
+ALL_SENDING = {"-d", "--data", "--data-binary", "--data-raw", "--data-urlencode", "--data-ascii", "--json", "-F",
+               "--form", "-T", "--upload-file", "--post-data", "--post-file", "--body-data", "--body-file"}
+
+
+def sends_local(e):
+    """Does the downloader send what's on this machine: a file (-d @f, -F
+    k=@f, -T f), its stdin (@-, unless it's text written in the command),
+    a value only running tells? Text written in the command (-d 'a=1')
+    isn't: what it sends is in the command for anyone to see."""
+    args = e.argv[1:]
+    k = 0
+    while k < len(args):
+        if not field_known(args[k]):
+            k += 1
+            continue
+        s = field_static(args[k])
+        if s == "--":
+            break
+        opt = None
+        value = None
+        if s in ALL_SENDING:
+            opt = s
+            value = args[k + 1] if k + 1 < len(args) else None
+            k += 1
+        elif s.startswith("--") and s.partition("=")[0] in ALL_SENDING and "=" in s:
+            opt = s.partition("=")[0]
+            value = Field([s.partition("=")[2]], False, False)
+        elif s.startswith("-") and not s.startswith("--") and len(s) > 2:
+            # (-d@f, -sd @f: in a cluster, the rest is its value, else the
+            # next word; an option before it taking a value: as if not)
+            for j in range(1, len(s)):
+                if opt is None and "-" + s[j] in ALL_SENDING:
+                    opt = "-" + s[j]
+                    if j + 1 < len(s):
+                        value = Field([s[j + 1 :]], False, False)
+                    elif k + 1 < len(args):
+                        value = args[k + 1]
+                        k += 1
+        k += 1
+        if opt is None:
+            continue
+        if opt in FILE_SENDING or value is None or not field_known(value):
+            return True
+        v = field_static(value)
+        if v == "@-" or v.startswith("@-") or ("=@-" in v):
+            if e.stdin is None or e.stdin.text is None or e.stdin.producer is not None:
+                return True
+            continue
+        if v.startswith("@") or "=@" in v or "=<" in v or (opt == "--data-urlencode" and "@" in v):
+            return True
+    return False
 
 
 def unknown_part(u):

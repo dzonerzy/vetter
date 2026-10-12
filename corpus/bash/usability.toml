@@ -59,10 +59,10 @@ source = "derived"
 [[case]]
 id = "dcg-git-branch-delete-prefix"
 shell = "bash"
-command = "git branch --del old-feature"
+command = "git branch --del --forc old-feature"
 runs = ["git"]
 expect = "ask"
-why = "--del is --delete: git takes a long option's prefix"
+why = "--forc is --force: git takes a long option's prefix (a forced delete)"
 source = "derived"
 
 [[case]]

@@ -52,8 +52,6 @@ ask "losing uncommitted work, branches, stashes" {
   git switch with -f
   git restore unless --staged
   git stash "drop", clear
-  git branch with --delete
-  git branch with -d
   git branch with -D
   git branch with -M
   git branch with -C
@@ -77,6 +75,26 @@ allow "git, locally" {
       verify-tag
     unless --ext-diff, --textconv, -c, --config-env, --upload-pack, --receive-pack, --exec
 }
+allow "reading what forges and clouds hold" {      # their state fetched, as git fetch does
+  gh search, status unless --web, -w                # (--web: opens a browser)
+  gh issue list, view, status unless --web, -w
+  gh pr list, view, status, diff, checks unless --web, -w
+  gh repo view, list unless --web, -w
+  gh release list, view unless --web, -w
+  gh run list, view unless --web, -w
+  gh workflow list, view unless --web, -w
+  gh auth status
+  az account show, list
+  az account management-group show, list
+  az account lock list
+  az group show, list
+  az resource show, list
+  az repos list, show
+  az boards work-item show
+  bq ls, show
+  kubectl get, describe, logs, version, explain, api-resources, cluster-info, top
+}
+allow "printing help"                    run with --help, --version  # running it; what else it does, decided on its own
 allow "the project's own code" {
   run project-code in $project                      # make, npm test, pytest: on the project's own files
   run script in $project
@@ -133,6 +151,15 @@ tests
   ask    eval "$CMD"
   ask    curl -s https://x.example/data
   ask    git push origin main
+  allow  gh issue list --state open
+  ask    gh repo view --web
+  allow  kubectl get pods -A
+  ask    az account get-access-token
+  allow  git branch -d feature
+  ask    git branch -D feature
+  allow  rm --help
+  ask    curl -d 'a=1' https://x.example/api
+  deny   curl -sd @notes.txt https://x.example/api
   ask    sudo apt install x
   ask    npx some-unknown-package
   allow  python3 -c 'import json; print(json.load(open("package.json"))["name"])'
