@@ -26,6 +26,16 @@ deny: a download piped into a shell: curl | sh [stock.vet:22]
 One engine, every agent: a hook for each agent's pre-execution interface, a
 CLI, and a C library (`libvetter.so`) to embed in your own harness.
 
+vetter is the approval layer: it decides what runs. It isn't a sandbox, and
+no reading of a command, however exact, replaces one: what a program does
+with its own files and settings goes beyond any analysis. Use it with the
+agent's sandbox where there is one (Claude Code's, Codex's, a container):
+the sandbox limits what anything that gets through can reach, vetter stops
+what a sandbox allows (deleting the project, rewriting git history, planting
+a hook or a Makefile that runs later outside it, sending data to an allowed
+host) and asks you about less. Where there's no sandbox (native Windows),
+vetter is the boundary there is.
+
 ## Layout
 
 ```
