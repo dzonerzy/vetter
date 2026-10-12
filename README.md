@@ -35,6 +35,7 @@ vetter/                  the package: zrun's strict subset of Python (docs/10-na
   build.py               the hook as an executable, libvetter (.so, .dll): no Python in them
   check.py               a command: parse, resolve, decide
   places.py              the home, the policy, the project, $temp on this machine
+  gitconfig.py, toolconfig.py   what a repository's git config, a tool's config in the project make it run
   paths.py, glob.py      POSIX and Windows paths (C:/, HKCU:, case); fnmatch's patterns
   jsontext.py            JSON read (rt.parse) and written (as json.dumps)
   shells/bash/           bash.zgram, scan.py (here-documents), syntax.py, expand.py, resolve.py

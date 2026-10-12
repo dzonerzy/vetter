@@ -1020,6 +1020,7 @@ def machine_actions(p, part):
     this machine: git running what its repository's own config names
     (core.fsmonitor=./w); pytest importing a conftest.py the agent wrote."""
     from ..gitconfig import isfile, repo_config, runs_from
+    from ..toolconfig import configured
 
     if part.name is None or part.unknown:
         return []
@@ -1028,6 +1029,19 @@ def machine_actions(p, part):
     if cwd is None:
         return []
     out = []
+    sub = ""
+    for a in e.argv[1:]:
+        s = field_static(a)
+        if s is not None and not s.startswith("-") and not s.startswith("+"):
+            sub = s
+            break
+    for path, setting in configured(part.name, sub, cwd):
+        # (a program its config names: a file of code where it is, the
+        # agent's if it wrote it; a setting otherwise, configured)
+        if path is None:
+            out.append(Action("run", None, None, "configured", "its config: " + setting))
+        else:
+            out.append(Action("run", path, None, "script", "its config: " + setting))
     for found in looked_up(part):
         # (git.cmd in the folder cmd runs git in: that runs, not PATH's)
         if isfile(found):
@@ -1129,6 +1143,9 @@ def decide_action(p, pl, part, act):
     hidden_file = act.verb in FILE_VERBS and act.path is None
     if act.kind is not None or part.name is None or hidden_file:
         seen = part.label if part.unknown else action_text(act)
+        if not part.unknown and act.kind is not None and nonempty(act.text):
+            # (what this machine said: its config's setting, as found)
+            seen = act.verb + " " + act.kind + ": " + act.text
         return ActionDecision(act, p.unknown, None, "vetter can't see: " + seen, "unknown", steps)
     return ActionDecision(act, p.default, None, "no rule for " + action_text(act), "default", steps)
 

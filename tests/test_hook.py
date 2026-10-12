@@ -251,6 +251,34 @@ def test_what_earlier_commands_wrote(program, policy, own_home):
                                         ["generated", CWD + "/evil"], ["generated", CWD + "/lib/Makefile"]]
 
 
+TOOL_CONFIGS = [
+    # (the config, its text, the command, the decision, in the reason)
+    (".cargo/config.toml", '[build]\nrustc-wrapper = "sccache"\n', "cargo tree", "allow", ""),
+    (".cargo/config.toml", '[build]\nrustc-wrapper = "/opt/w"\n', "cargo tree", "ask", "rustc-wrapper"),
+    (".cargo/config.toml", '[target.x86_64-unknown-linux-gnu]\nrunner = "/tmp/r"\n', "cargo tree", "deny", "/tmp/r"),
+    (".cargo/config.toml", '[alias]\ntree = "run --bin x"\n', "cargo tree", "ask", "alias.tree"),
+    (".yarnrc.yml", "yarnPath: /opt/yarn.cjs\n", "yarn --version", "ask", "yarnPath"),
+    (".mvn/jvm.config", "-Xmx2g -javaagent:/opt/a.jar\n", "mvn -v", "ask", "javaagent"),
+    (".npmrc", "script-shell=/opt/sh\n", "npm test", "ask", "script-shell"),
+]
+
+
+def test_what_tools_configs_say(program, policy, own_home):
+    """Deciding here: the programs a tool's config in the project names,
+    run whatever the command (cargo tree through rustc-wrapper, any yarn
+    through yarnPath); one named by its name alone, the system's"""
+    project = own_home / "cfg"
+    for rel, text, command, want, why in TOOL_CONFIGS:
+        for mode in ("python", "compiled"):
+            if project.exists():
+                shutil.rmtree(project)
+            (project / rel).parent.mkdir(parents=True)
+            (project / rel).write_text(text)
+            out = json.loads(answer(program, "claude", json.dumps(claude_req(command, cwd=str(project))), policy, mode))
+            assert decision(out) == want and why in out["hookSpecificOutput"]["permissionDecisionReason"], \
+                (mode, rel, text, out)
+
+
 def test_what_this_machine_says(program, policy, own_home):
     """Deciding here: a repository's own config naming a program git runs
     (core.fsmonitor), a conftest.py the agent wrote that pytest imports"""

@@ -114,6 +114,14 @@ doesn't allow `read x < /flag`; nor what it runs that vetter can't see
 (`run configured`: git's repository config naming `core.fsmonitor`). A
 `deny` or `ask` naming a program covers all it does.
 
+Deciding on the machine the command runs on, vetter reads the configs a
+tool loads from where it runs and the folders above: a program one names by
+its path is a `run script` there (`.cargo/config.toml`'s `rustc-wrapper`,
+`linker`, `runner`; `.yarnrc.yml`'s `yarnPath`; `.mvn/jvm.config`'s
+`-javaagent:`; `.npmrc`'s `script-shell`), so `cargo tree` with a wrapper in
+/tmp is a program from a temporary dir; one named alone (`sccache`) is the
+system's; a cargo alias of the subcommand, `[env]`, is `run configured`.
+
 Places:
 
 - **`$project`, `$home`, `$temp`**: what vetter knows when it decides, not
