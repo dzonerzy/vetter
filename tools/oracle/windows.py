@@ -1,5 +1,5 @@
-"""The cmd and PowerShell proofs of docs/11-analyzer-remediation.md (and
-docs/12-analyzer-bypass-round2.md's, r2) run on
+"""The cmd and PowerShell proofs of the analyzer audit of 2026-10-12 (and
+of its second round's, r2) run on
 the real shells (from WSL, through its Windows interop), against a sentinel
 file in a scratch folder under the Windows user's %TEMP%: does the shell do
 what the proof says, and does vetter, with that folder protected, not allow
@@ -35,7 +35,7 @@ CMD = [
     ("setp", 'echo type R\\flag | cmd /v:on /d /c "set /p V=&!V!"'),
     ("forf", "for /f %i in ('echo type') do %i R\\flag"),
     ("tilde", 'for %i in ("R\\flag") do type %~fi'),
-    # (docs/12-analyzer-bypass-round2.md)
+    # (the audit's second round, 2026-10-12)
     ("r2C02", "(echo @type R\\flag)>git.cmd&git status"),
     ("r2C03", "set COMSPEC=C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe&"
               "for /f \"delims=\" %A in ('Get-Content R\\flag') do @echo %A"),
@@ -58,7 +58,7 @@ PS = [
     ("P06", "$p='R\\';$p+='flag';Get-Content $p"),
     ("P07", "Set-Location 'R'; Push-Location 'P'; Pop-Location; Get-Content flag"),
     ("P08", "$ExecutionContext.SessionState.Path.SetLocation('R'); Get-Content flag"),
-    # (docs/12-analyzer-bypass-round2.md)
+    # (the audit's second round, 2026-10-12)
     ("r2P02", "Set-Location 'R'\nPush-Location 'P' -StackName A\nPush-Location 'P' -StackName B\n"
               "Pop-Location -StackName A\nGet-Content flag"),
     ("r2P02b", "Set-Location 'R'\nPush-Location 'P' -StackName A\nSet-Location -StackName A\nPop-Location\n"

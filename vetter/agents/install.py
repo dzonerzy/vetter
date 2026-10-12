@@ -1,4 +1,4 @@
-"""Installing vetter's hook in an agent's settings (docs/06-integrations.md):
+"""Installing vetter's hook in an agent's settings (docs/agents.md):
 the hook command (`python -m vetter hook AGENT`) added where the agent runs
 its hooks, ours replaced, others' kept.
 

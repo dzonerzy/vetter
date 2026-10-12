@@ -24,7 +24,7 @@ executable, and a C library.
   `call`, `if`, `COMSPEC`, stdin continuation); what each program does with
   its arguments and environment from command specs (`vetter/specs`), the
   tools agents use most read strictly (every option listed).
-- **The policy language** (`docs/05-policy-language.md`): rules on what a
+- **The policy language** (`docs/policy-language.md`): rules on what a
   command does (reads, writes, deletes, runs, downloads, sends) and where,
   by program and subcommand, with conditions; the stock policy; `vetter
   check`, `why` (each rule's verdict), `test`, `lint`, `replay`, `import`
@@ -39,11 +39,11 @@ executable, and a C library.
   commands for real (`tools/oracle`: bash in bubblewrap under strace, cmd
   and PowerShell on Windows from WSL, each attack written many ways);
   `pytest --oracle`. A comparison with dcg and cc-safety-net
-  (`tools/compare/guards.py`, results in `docs/08-bypass-corpus.md`).
+  (`tools/compare/guards.py`, results in `docs/testing.md`).
 
 ### Security
-- Two analyzer audits' findings fixed (`docs/11-analyzer-remediation.md`:
-  49; `docs/12-analyzer-bypass-round2.md`: 40), each runtime-verified, by
+- Two analyzer audits' findings fixed (the first: 49; its second round:
+  40), each runtime-verified, by
   what they share rather than one by one; the oracles' own finds since
   (aliases losing redirections, `if`'s redirections in cmd, PowerShell's
   `${C:\...}` and script blocks' redirections, Windows path forms).

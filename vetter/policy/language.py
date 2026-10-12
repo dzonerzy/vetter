@@ -1,4 +1,4 @@
-"""The policy language (docs/05-policy-language.md): a policy loaded from
+"""The policy language (docs/policy-language.md): a policy loaded from
 its text (rt.parse with the language's grammar, policy.zgram; the prelude
 and `use`d policies built in), and decided: each part of a command's
 resolution, each of its actions down the rules, the first that matches

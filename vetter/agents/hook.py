@@ -1,4 +1,4 @@
-"""Each agent's hook (docs/06-integrations.md): the agent's request on
+"""Each agent's hook (docs/agents.md): the agent's request on
 stdin (JSON, read with rt.parse), the policy found (places.py), the
 command decided, the answer on stdout in the agent's format, as json.dumps
 writes it. A hook never fails open by crashing: any error is an ask (a
