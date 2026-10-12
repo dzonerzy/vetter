@@ -59,7 +59,11 @@ command = '''set "x=del /q C:\Users\user\Documents\notes.txt" & call %%x%%'''
 allowed_by = "set and call builtins"
 runs = ["set", "call", "del"]
 expect = "deny"
-why = "Call performs another expansion pass after SET and executes the constructed deletion."
+# (run on Windows 11's cmd, 10.0.22621, at a prompt: call's pass gives
+# %del ... %, not a command, and nothing is deleted; in a batch file, %%x%%
+# is %x% and it is. vetter reads it as the deletion either way: the
+# stricter)
+why = "Call performs another expansion pass after SET: in a batch file, the constructed deletion runs."
 source = "https://devblogs.microsoft.com/oldnewthing/20060823-00/?p=29993"
 
 [[case]]
