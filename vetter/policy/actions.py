@@ -90,13 +90,20 @@ def parts(resolution, home):
     n = len(resolution.executions)
     for k in range(n):
         e = resolution.executions[k]
-        if index[k] < 0 or e.stdin is None or e.stdin.producer is None:
+        if index[k] < 0:
+            continue
+        piped = e.stdin is not None and e.stdin.producer is not None
+        # (its producer: what's piped in, else what it reads through <(cmd))
+        producer = e.stdin.producer if piped else e.fed
+        if producer is None:
             continue
         p = out[index[k]]
         for j in range(n):
-            if resolution.executions[j] is e.stdin.producer:
+            if resolution.executions[j] is producer:
                 p.producer = out[index[j]] if index[j] >= 0 else None
                 break
+        if not piped:
+            continue
         if p.name in DOWNLOADERS or p.name in SOCKETS:
             # (what's piped into it is sent)
             for a in [x for x in p.actions]:

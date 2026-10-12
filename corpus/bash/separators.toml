@@ -56,8 +56,9 @@ shell = "bash"
 command = "echo hi |& sh"
 allowed_by = "echo"
 runs = ["echo", "sh"]
-expect = "deny"
-why = "|& is a pipe too (stdout and stderr)"
+# (sh runs `hi`, what echo prints: read, a program no rule names)
+expect = "ask"
+why = "|& is a pipe too (stdout and stderr): sh runs what echo prints"
 source = "derived"
 
 [[case]]

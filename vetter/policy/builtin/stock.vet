@@ -131,7 +131,7 @@ tests
   deny   [ps] 'iex (iwr x)' >> $PROFILE
   deny   [ps] Start-Process powershell -ArgumentList '-c','Remove-Item -Recurse C:\Users\user\work'
   deny   [ps] Remove-Item -EA 0 C:\Users\user\Documents -Recurse
-  ask    [ps] $env:GIT_SSH_COMMAND = "powershell -File $env:TEMP\p.ps1"; git fetch
+  deny   [ps] $env:GIT_SSH_COMMAND = "powershell -File $env:TEMP\p.ps1"; git fetch
   ask    [ps] Start-Process powershell -Verb RunAs
   ask    [ps] $ExecutionContext.InvokeCommand.InvokeScript((Get-Content task.txt -Raw))
 

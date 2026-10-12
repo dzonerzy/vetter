@@ -13,7 +13,7 @@ carried in a standalone program's image.
 from dataclasses import dataclass
 
 from ..glob import match
-from ..shells.bash.expand import Field, field_known, field_static, field_text
+from ..shells.bash.expand import Dynamic, Field, field_known, field_static, field_text
 from . import load as py_specs
 
 
@@ -563,7 +563,7 @@ def registry(value):
 
 
 def role(rt, w, e, ctx, r, value, option, spec):
-    from ..shells.bash.resolve import code, downloaded, exec_name, inner, unknown
+    from ..shells.bash.resolve import code, downloaded, exec_name, inner, run, unknown
 
     name = exec_name(e)
     if r == "source" or r == "code_source":
@@ -586,9 +586,20 @@ def role(rt, w, e, ctx, r, value, option, spec):
         e.roles.append(Role(r, value, option))
         if r == "write" and name in DOWNLOADERS:
             downloaded(rt, w, e, value)
+    elif (r == "shell" or r == "cmdline") and field_known(value) and windows_program(field_static(value)):
+        # (C:\...\p.exe: a program named by its Windows path, not sh's
+        # text, its backslashes escapes; run without the variable that
+        # named it, GIT_SSH_COMMAND: it would name it again)
+        env = {k: v for k, v in e.env.items() if k != option}
+        run(rt, w, [value], env, [], ctx, e.span, e.stdin, e.via + (labelled(name, option),))
     elif r == "shell" or r == "cmdline" or r == "remote_command":
         if field_known(value):
-            code(rt, w, field_static(value), ctx, e.span, labelled(name, option), False, None)
+            text = field_static(value)
+            code(rt, w, text, ctx, e.span, labelled(name, option), False, None)
+            if r == "shell" and has_windows_path(text):
+                # (C:\...\p.ps1 in it: sh's backslashes escapes, read too
+                # as written, in case what runs it is Windows' own)
+                code(rt, w, text.replace("\\", "\\\\"), ctx, e.span, labelled(name, option), False, None)
         else:
             unknown(rt, w, labelled(name, option) + ": runs a command only running tells", e.span, ctx, "code", [])
     elif r == "program":
@@ -783,6 +794,61 @@ def code_words(rt, w, e, ctx, words, label):
             return
         texts.append(field_static(f))
     code(rt, w, " ".join(texts), ctx, e.span, label, False, None)
+
+
+def path_dirs(value):
+    """The directories a PATH value names, each all known (one next to what
+    only running tells, $PATH, left out): split at ; when it's Windows'
+    (a ; or a drive in it), else at :."""
+    segments = []
+    cur = ""
+    cut = []
+    for p in value.parts:
+        if isinstance(p, Dynamic):
+            segments.append(cur)
+            cur = ""
+        else:
+            cur += p
+    segments.append(cur)
+    text = "".join(segments)
+    windows = ";" in text or (len(text) > 1 and text[1] == ":")
+    sep = ";" if windows else ":"
+    out = []
+    for k in range(len(segments)):
+        pieces = segments[k].split(sep)
+        for i in range(len(pieces)):
+            # (a piece touching a dynamic part is only part of a directory)
+            partial = (i == 0 and k > 0) or (i == len(pieces) - 1 and k < len(segments) - 1)
+            if pieces[i] != "" and not partial:
+                cut.append(pieces[i])
+    for d in cut:
+        if d not in out:
+            out.append(d)
+    return out
+
+
+def has_windows_path(s):
+    """A drive's path in s with a backslash in it (C:\\..., C:/...\\x)."""
+    if "\\" not in s:
+        return False
+    for i in range(len(s) - 2):
+        c = s[i]
+        if s[i + 1] == ":" and (s[i + 2] == "\\" or s[i + 2] == "/") and (("a" <= c <= "z") or ("A" <= c <= "Z")) \
+                and (i == 0 or not s[i - 1].isalnum()):
+            return True
+    return False
+
+
+def windows_program(s):
+    """A Windows path alone (C:\\...\\p.exe, \\\\host\\share\\x), no blanks
+    or quotes: a program named, not a command line."""
+    absolute = (len(s) > 2 and s[1] == ":" and s[2] == "\\") or s.startswith("\\\\")
+    if not absolute:
+        return False
+    for c in s:
+        if is_space(c) or c == '"' or c == "'":
+            return False
+    return True
 
 
 def pattern_given(e, spec):
@@ -1202,7 +1268,7 @@ def awk(rt, w, e, ctx, value):
 
 
 def apply_env(rt, w, e, ctx):
-    from ..shells.bash.resolve import copy, exec_name, expanded_later, unknown
+    from ..shells.bash.resolve import copy, exec_name, expanded_later, run, unknown
 
     name = exec_name(e)
     who = name if name is not None and name != "" else "it"
@@ -1223,6 +1289,21 @@ def apply_env(rt, w, e, ctx):
         if r == "lookup_path":
             unknown(rt, w, var + "=" + field_text(value) + ": which programs " + who + " runs depends on it", e.span, ctx,
                     "lookup_path", [])
+            written = field_static(e.argv[0]) if len(e.argv) > 0 else None
+            if var == "PATH" and name is not None and written is not None and "/" not in written \
+                    and "\\" not in written:
+                # (each directory the line names in it: the program may be
+                # found there; PATH=/tmp/x:$PATH git: /tmp/x/git; run
+                # without the PATH that found it)
+                env = {k: v for k, v in e.env.items() if k != var}
+                found_ctx = copy(ctx)
+                if var in found_ctx.exported:
+                    found_ctx.exported.pop(var)
+                for d in path_dirs(value):
+                    windows = ":" in d or "\\" in d
+                    sep = "\\" if windows else "/"
+                    found = d.rstrip("\\/") + sep + name + (".exe" if windows and "." not in name else "")
+                    run(rt, w, [Field([found], False, False)], env, [], found_ctx, e.span, e.stdin, e.via + ("PATH",))
         elif r == "git_config_list":
             unknown(rt, w, var + ": git settings only running tells", e.span, ctx, "code", [])
         elif r == "code_file":

@@ -13,7 +13,7 @@ from ...paths import fold
 from ...specs import Role, is_space, strip
 from ..bash.expand import Field, Variables
 from ..bash.resolve import Ctx, Execution, Redirect, Resolution, Stdin, W, execution, run, unknown
-from .syntax import Block, For, If, Simple, parse
+from .syntax import Block, For, If, Simple, expand_marks, parse, split_name
 
 MAX_DEPTH = 8
 QUIET = {"nul", "nul:", "con", "con:"}
@@ -53,7 +53,9 @@ def default_env(home, cwd):
 @dataclass
 class CW:
     """The walker: what it found, the home, how deep in code read again,
-    via, whether !VAR! expands, bash's walker, where it runs."""
+    via, whether !VAR! expands, bash's walker, where it runs; the
+    variables (by case_key) as they are as each command runs, the text on
+    stdin when it's known (echo ... | cmd /c "set /p V=")."""
 
     r: object
     home: object
@@ -62,20 +64,26 @@ class CW:
     delayed: bool
     bash: object
     cwd: object
+    vars: dict
+    stdin_text: object
 
 
 def walker(r, home, depth, via, delayed):
-    return CW(r, home, depth, via, delayed, W(r), None)
+    return CW(r, home, depth, via, delayed, W(r), None, {}, None)
 
 
-def resolve(rt, command, cwd, home, depth, r, via, delayed):
+def resolve(rt, command, cwd, home, depth, r, via, delayed, vars=None, stdin_text=None):
     """The line's executions (r, or a new Resolution); ValueError
-    ("unreadable: ...") when cmd's reading of it can't be known."""
+    ("unreadable: ...") when cmd's reading of it can't be known. vars: the
+    variables it starts with (a cmd started: its parent's; call, for:
+    the same ones), else a new cmd.exe's."""
     if r is None:
         r = Resolution([], [], set(), set())
     w = walker(r, home, depth, via, delayed)
     w.cwd = cwd
-    seq, _ = parse(command, default_env(home, cwd), delayed)
+    w.vars = vars if vars is not None else default_env(home, cwd)
+    w.stdin_text = stdin_text
+    seq, _ = parse(command, w.vars, delayed)
     for part in seq.parts:
         node(rt, w, part)
     return r
@@ -86,6 +94,7 @@ def launch(rt, r, home, depth, via, cwd, name, line, redirects, span):
     command line: read as cmd would see it started."""
     w = walker(r, home, depth, via, False)
     w.cwd = cwd
+    w.vars = default_env(home, cwd)
     first = len(r.executions)
     simple(rt, w, Simple(name, line, [], span))
     if len(r.executions) > first:
@@ -178,9 +187,19 @@ def for_values(n):
         o = fold(strip_chars(" ".join(n.options[at + 1 :]), '"'))
         usebackq = "usebackq" in o
         quote = "'" if usebackq else '"'
-        if not (len(items) > 1 and items[0] == quote and items[len(items) - 1] == quote) or "skip=" in o or "eol=" in o:
+        run_quote = "`" if usebackq else "'"
+        if len(items) < 2 or "skip=" in o or "eol=" in o:
             return None
-        s = items[1 : len(items) - 1]
+        if items[0] == quote and items[len(items) - 1] == quote:
+            s = items[1 : len(items) - 1]
+        elif items[0] == run_quote and items[len(items) - 1] == run_quote:
+            # (a command's output, when it's known: echo's text, where's
+            # program)
+            s = command_output(items[1 : len(items) - 1])
+            if s is None:
+                return None
+        else:
+            return None
         delims = " \t"
         d = o.find("delims=")
         if d >= 0:
@@ -232,6 +251,33 @@ def for_values(n):
         if "*" in w or "?" in w:
             return None
     return [{var: w} for w in words]
+
+
+def command_output(text):
+    """What a for /f's command prints, when the line tells: `echo TEXT`'s
+    TEXT; `where NAME`'s NAME's path, standing for it (the program found
+    on PATH, run by that name). None: only running tells."""
+    t = strip(text)
+    word = t
+    rest = ""
+    for i in range(len(t)):
+        if is_space(t[i]):
+            word = t[:i]
+            rest = strip(t[i + 1 :])
+            break
+    low = fold(word)
+    if (low == "echo" or low == "echo.exe") and rest != "" and not any_of(rest, "&|<>^%!"):
+        return rest
+    if (low == "where" or low == "where.exe") and rest != "" and not any_of(rest, " \t*?:/\\&|<>^%!\""):
+        return rest
+    return None
+
+
+def any_of(s, chars):
+    for c in s:
+        if c in chars:
+            return True
+    return False
 
 
 def lstrip_pct(s):
@@ -312,12 +358,18 @@ def node(rt, w, n):
     if isinstance(n, list):
         # (a pipeline: each reads the one before)
         producer = None
+        before = None
+        saved = w.stdin_text
         for c in n:
             first = len(w.r.executions)
+            # (what echo writes into the pipe: known, set /p reads it)
+            w.stdin_text = echo_text(before)
             node(rt, w, c)
             if len(w.r.executions) > first and producer is not None:
                 w.r.executions[first].stdin = Stdin(None, producer)
             producer = w.r.executions[first] if len(w.r.executions) > first else None
+            before = c
+        w.stdin_text = saved
     elif isinstance(n, Simple):
         simple(rt, w, n)
     elif isinstance(n, Block):
@@ -340,6 +392,17 @@ def node(rt, w, n):
         for_command(rt, w, n)
 
 
+def echo_text(c):
+    """What `echo TEXT` (a Simple: its args what follows the blank after
+    echo) writes; None if c isn't such an echo."""
+    if not isinstance(c, Simple) or fold(c.name) != "echo":
+        return None
+    t = rstrip(c.args)
+    if t == "" or fold(t) == "on" or fold(t) == "off":
+        return None
+    return t
+
+
 def for_command(rt, w, n):
     opts = [fold(o) for o in n.options]
     items = strip(n.items)
@@ -353,20 +416,96 @@ def for_command(rt, w, n):
             # (for /f ... in ('command'): it runs)
             code(rt, w, items[1 : len(items) - 1], n.span, "for /f", None)
     rounds = for_values(n)
-    modifiers = False
-    if rounds is not None and len(rounds) > 0:
-        for var in rounds[0]:
-            if has_modifier(n.body_text, var):
-                modifiers = True
-    if rounds is not None and strip(n.body_text) != "" and not modifiers:
+    if rounds is not None and strip(n.body_text) != "":
         # (the values known: the body read with each, as cmd runs it)
+        texts = []
         for values in rounds[:MAX_ROUNDS]:
             text = n.body_text
             for var, v in values.items():
-                text = text.replace("%~" + var, strip_chars(v, '"')).replace("%" + var, v)
-            code(rt, w, text, n.span, "for", None)
-        return
+                if text is not None:
+                    text = for_substitute(text, var, v, w.cwd)
+            if text is None:
+                # (a modifier only running tells: %~zi, %~$PATH:i)
+                texts = None
+                break
+            texts.append(text)
+        if texts is not None:
+            for text in texts:
+                code(rt, w, text, n.span, "for", None)
+            return
     node(rt, w, n.body)
+
+
+def for_substitute(text, var, value, cwd):
+    """text with %VAR and %~[fdpnxs]VAR (the value's full path, drive,
+    path, name, extension) put in; None if a modifier's value only running
+    tells (a, t, z: its attributes, time, size; $PATH:)."""
+    out = ""
+    i = 0
+    n = len(text)
+    bare = strip_chars(value, '"')
+    while i < n:
+        if text[i] != "%":
+            out += text[i]
+            i += 1
+            continue
+        if text[i + 1 : i + 2] == "~":
+            p = i + 2
+            run_end = p
+            while run_end < n and text[run_end] in "fdpnxsatz":
+                run_end += 1
+            # (the modifiers: the longest run the variable ends)
+            k = -1
+            for j in range(p, run_end + 1):
+                if text[j : j + len(var)] == var:
+                    k = j
+            if text[p : p + 1] == "$":
+                if has_modifier(text[i:], var):
+                    return None
+            if k >= 0:
+                mods = text[p:k]
+                if any_of(mods, "atz"):
+                    return None
+                out += path_parts(bare, mods, cwd)
+                i = k + len(var)
+                continue
+        if text[i + 1 : i + 1 + len(var)] == var:
+            out += value
+            i += 1 + len(var)
+            continue
+        out += "%"
+        i += 1
+    return out
+
+
+def path_parts(v, mods, cwd):
+    """%~[fdpnxs]i of a value: its full path (Windows'), or the parts the
+    modifiers name, in drive, path, name, extension order."""
+    if mods == "":
+        return v
+    full = v.replace("/", "\\")
+    if not paths.is_abs(v):
+        full = paths.join(cwd if cwd is not None else "C:/", v).replace("/", "\\")
+    if "f" in mods or "s" in mods:
+        return full
+    drive = full[:2] if len(full) >= 2 and full[1] == ":" else ""
+    rest = full[len(drive) :]
+    slash = rest.rfind("\\")
+    folder = rest[: slash + 1]
+    leaf = rest[slash + 1 :]
+    dot = leaf.rfind(".")
+    name = leaf[:dot] if dot > 0 else leaf
+    ext = leaf[dot:] if dot > 0 else ""
+    out = ""
+    if "d" in mods:
+        out += drive
+    if "p" in mods:
+        out += folder
+    if "n" in mods:
+        out += name
+    if "x" in mods:
+        out += ext
+    return out
 
 
 # ----------------------------------------------------------------------
@@ -432,6 +571,22 @@ def simple(rt, w, n):
     if n.name == "" or fold(n.name) == "rem":
         return
     name = n.name
+    args = n.args
+    if w.delayed:
+        # (!VAR! as this command runs: a set before it on the line counts)
+        try:
+            if "!" in name:
+                # (the name a value: the command's name is its first word,
+                # the rest arguments)
+                name, more = split_name(strip(expand_marks(name, w.vars, "!")))
+                args = more + (" " + args if more != "" and args != "" else args)
+            args = expand_marks(args, w.vars, "!")
+        except ValueError as ex:
+            note(rt, w, str(ex)[12:] if str(ex).startswith("unreadable: ") else str(ex), n.span, "code")
+            return
+        n = Simple(name, args, n.redirections, n.span)
+        if name == "":
+            return
     low = fold(paths.program_name(name))
     reds = []
     for x in n.redirections:
@@ -478,8 +633,20 @@ def simple(rt, w, n):
         w.r.executions.append(execution(argv, {}, reds, w.cwd, span, w.via, None, "program"))
         note(rt, w, low + " /create: schedules a command to run later", span, "persistent")
         return
-    # (rundll32, regsvr32, msiexec...: specs/windows.toml)
-    run(rt, w.bash, argv, {}, reds, ctx_of(w), span, None, w.via)
+    # (rundll32, regsvr32, msiexec...: specs/windows.toml; what `set` set:
+    # its environment, GIT_SSH_COMMAND...)
+    run(rt, w.bash, argv, set_env(w), reds, ctx_of(w), span, None, w.via)
+
+
+def set_env(w):
+    """The variables `set` changed (here or in a cmd that started this
+    one), as a program's environment."""
+    env = {}
+    fresh = default_env(w.home, w.cwd)
+    for key, v in w.vars.items():
+        if key not in fresh or fresh[key] != v:
+            env[key] = Field([v], False, False)
+    return env
 
 
 def split_args(s):
@@ -537,12 +704,65 @@ def internal(rt, w, low, name, args, reds, span):
     if low == "cd" or low == "chdir" or low == "pushd":
         if len(operands) > 0:
             w.cwd = paths.join(w.cwd, " ".join(operands))
+    elif low == "set":
+        set_command(w, args)
     elif low == "call":
         rest = strip(args)
         if rest != "" and not rest.startswith(":"):
+            # (call expands its line again: %%x%% a %x% then, its value now)
+            try:
+                rest = expand_marks(rest.replace("%%", "%"), w.vars, "%")
+            except ValueError as ex:
+                note(rt, w, "call: " + (str(ex)[12:] if str(ex).startswith("unreadable: ") else str(ex)), span, "code")
+                return
             code(rt, w, rest, span, "call", None)
     elif low == "start":
         start(rt, w, args, span)
+
+
+def set_command(w, args):
+    """set NAME=VALUE, set "NAME=VALUE" (the value to the closing quote),
+    set /a (a number only running tells), set /p NAME=PROMPT (a line of
+    stdin: known when it's echo's): the variable as the next commands
+    see it. A value only running tells: the variable forgotten (its use
+    then unreadable)."""
+    s = args
+    while len(s) > 0 and is_space(s[0]):
+        s = s[1:]
+    kind = ""
+    if len(s) >= 2 and s[0] == "/" and s[1] in "aApP":
+        kind = s[1].lower()
+        s = strip(s[2:])
+    if s.startswith('"'):
+        q = s.rfind('"')
+        s = s[1:q] if q > 0 else s[1:]
+    if "=" not in s:
+        return
+    name, _, value = s.partition("=")
+    if kind == "a":
+        # (set /a x=1+2, x+=1: arithmetic, each name it sets)
+        for piece in s.split(","):
+            n = strip(piece.partition("=")[0])
+            while len(n) > 0 and n[len(n) - 1] in "+-*/%&|^<>":
+                n = n[: len(n) - 1]
+            if n != "":
+                w.vars.pop(paths.case_key(strip(n)), None)
+        return
+    key = paths.case_key(name)
+    if key == "":
+        return
+    if kind == "p":
+        text = w.stdin_text
+        if text is None:
+            w.vars.pop(key, None)
+            return
+        line, _, rest = text.partition("\n")
+        w.stdin_text = rest
+        value = line.rstrip("\r")
+    if value == "":
+        w.vars.pop(key, None)
+    else:
+        w.vars[key] = value
 
 
 def start_option_end(s):
@@ -609,7 +829,7 @@ def cmd(rt, w, args, span):
     if rest.startswith('"') and rstrip(rest).endswith('"'):
         r = strip(rest)
         rest = r[1 : len(r) - 1]
-    code(rt, w, rest, span, "cmd /c", delayed)
+    code(rt, w, rest, span, "cmd /c", delayed, True)
 
 
 def rstrip(s):
@@ -619,14 +839,18 @@ def rstrip(s):
     return s[:j]
 
 
-def code(rt, w, text, span, label, delayed):
+def code(rt, w, text, span, label, delayed, child=False):
+    """text run: in this cmd (call, for: its variables, changed by it), or
+    a child cmd (its own copy of them, and the stdin known)."""
     if w.depth >= MAX_DEPTH:
         note(rt, w, label + ": nested too deep", span, "code")
         return
     executions = len(w.r.executions)
     unknowns = len(w.r.unknowns)
+    v = {k: x for k, x in w.vars.items()} if child else w.vars
     try:
-        resolve(rt, text, w.cwd, w.home, w.depth + 1, w.r, w.via + (label,), w.delayed if delayed is None else delayed)
+        resolve(rt, text, w.cwd, w.home, w.depth + 1, w.r, w.via + (label,), w.delayed if delayed is None else delayed,
+                v, w.stdin_text if child else None)
     except ValueError as ex:
         why = str(ex)
         if why.startswith("unreadable: "):

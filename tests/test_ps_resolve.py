@@ -7,9 +7,9 @@ commands."""
 import pytest
 import zgram
 
+import shared
 from golden import compare, load_golden
 from test_bash_resolve import field, fields, stdin_of
-from vetter import engine
 from vetter.shells.powershell import resolve
 
 
@@ -35,8 +35,7 @@ def resolved(rt, command, cwd, home):
 
 @pytest.fixture(scope="module")
 def program():
-    lang = engine.language({"ps_resolve": resolved})
-    return engine.load(lang, {"ps_resolve": ["command", "cwd", "home"]})
+    return shared.program()
 
 
 @pytest.mark.parametrize("mode", ["python", "compiled"])

@@ -18,8 +18,10 @@ shell = "powershell"
 command = '''git -c core.pager='powershell.exe -NoProfile -Command "& $env:TEMP\p.exe"' --paginate log -1'''
 allowed_by = "git"
 runs = ["git", "powershell.exe", "p.exe"]
-expect = "deny"
-why = "The configured pager launches an executable from the temp directory."
+# (git runs its pager through sh, which expands $env to nothing: PowerShell
+# is given `& :TEMP\p.exe`. What it runs only running tells: an ask)
+expect = "ask"
+why = "The configured pager launches PowerShell with code sh rewrites first."
 source = "https://git-scm.com/docs/git-config#Documentation/git-config.txt-corepager"
 
 [[case]]

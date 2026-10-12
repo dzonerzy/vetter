@@ -5,9 +5,9 @@ hand-written lines and generated ones."""
 
 import pytest
 
+import shared
 from golden import compare, load_golden
 from test_bash_resolve import field, fields, stdin_of
-from vetter import engine
 from vetter.shells.cmd import resolve
 
 
@@ -31,8 +31,7 @@ def resolved(rt, command, cwd, home):
 
 @pytest.fixture(scope="module")
 def program():
-    lang = engine.language({"cmd_resolve": resolved})
-    return engine.load(lang, {"cmd_resolve": ["command", "cwd", "home"]})
+    return shared.program()
 
 
 @pytest.mark.parametrize("mode", ["python", "compiled"])

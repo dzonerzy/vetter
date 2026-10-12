@@ -11,6 +11,7 @@ import time
 
 import pytest
 
+import shared
 from golden import compare, load_golden
 from vetter import engine
 from vetter.agents import log
@@ -33,9 +34,7 @@ def trim(rt, path):
 
 @pytest.fixture(scope="module")
 def program():
-    lang = engine.language({"masks": masks, "record": record, "trim": trim})
-    return engine.load(lang, {"masks": ["commands"], "record": ["path", "agent", "cwd", "command", "decision", "rule_by"],
-                              "trim": ["path"]})
+    return shared.program()
 
 
 @pytest.mark.parametrize("mode", ["python", "compiled"])

@@ -8,11 +8,14 @@ own): nothing is written to the user's log."""
 import io
 import json
 import os
+import pathlib
+import shutil
 import subprocess
 import sys
 
 import pytest
 
+import shared
 from golden import UPDATE, load_golden, save_golden
 from vetter import build, engine
 from vetter.agents import hook, install
@@ -31,8 +34,7 @@ def run_hook(rt, agent, policy):
 
 @pytest.fixture(scope="module")
 def program():
-    lang = engine.language({"run_hook": run_hook})
-    return engine.load(lang, {"run_hook": ["agent", "policy"]})
+    return shared.program()
 
 
 @pytest.fixture(scope="module")
@@ -276,13 +278,49 @@ def test_policy_with_errors(program, policy, tmp_path):
 # ----------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
-def executable(tmp_path_factory):
-    """vetter-hook built (zrun.build_native: Zig, the ziglang package or a
-    stand in running the `zig` on the PATH)"""
-    import importlib.util
-    import shutil
+def build_key():
+    """What a build is made from: vetter's sources, and the zrun and zgram
+    in use (their modules' size and time: a local build changes them)."""
+    import hashlib
 
+    import zgram
+    import zrun
+
+    h = hashlib.sha256()
+    root = pathlib.Path(build.__file__).resolve().parent
+    for f in sorted(root.rglob("*")):
+        if f.is_file() and f.suffix in (".py", ".toml", ".vet", ".zgram"):
+            h.update(str(f.relative_to(root)).encode())
+            h.update(f.read_bytes())
+    for m in (zrun, zgram):
+        st = os.stat(m.__file__)
+        h.update(f"{m.__file__}:{st.st_size}:{st.st_mtime_ns}".encode())
+    return h.hexdigest()[:24]
+
+
+def cached_build(pytestconfig, name, make):
+    """make(dir) run once for these sources: its output kept in pytest's
+    cache (.pytest_cache), the Zig builds taking minutes each."""
+    d = pathlib.Path(pytestconfig.cache.mkdir("vetter-builds")) / (name + "-" + build_key())
+    done = d / ".built"
+    if done.exists():
+        return done.read_text()
+    if d.exists():
+        shutil.rmtree(d)
+    d.mkdir(parents=True)
+    out = make(d)
+    done.write_text(out)
+    return out
+
+
+@pytest.fixture(scope="module")
+def executable(tmp_path_factory, pytestconfig):
+    """vetter-hook built (zrun.build_native: Zig, the ziglang package or a
+    stand in running the `zig` on the PATH), once for these sources"""
+    import importlib.util
+
+    if not pytestconfig.getoption("--build"):
+        pytest.skip("the standalone hook and libvetter: pytest --build")
     if sys.platform != "linux" or (importlib.util.find_spec("ziglang") is None and shutil.which("zig") is None):
         pytest.skip("a standalone hook: Linux, with Zig")
     mp = pytest.MonkeyPatch()
@@ -294,7 +332,7 @@ def executable(tmp_path_factory):
         mp.setenv("PYTHONPATH", os.pathsep.join([str(shim), os.environ.get("PYTHONPATH", "")]))
         mp.syspath_prepend(str(shim))
     try:
-        yield build.build(str(tmp_path_factory.mktemp("exe") / "vetter-hook"))
+        yield cached_build(pytestconfig, "exe", lambda d: build.build(str(d / "vetter-hook")))
     finally:
         mp.undo()
 
@@ -337,15 +375,15 @@ def test_standalone_remembers(executable, policy, own_home):
     assert [k for k, _ in remembered(own_home)] == ["generated", "generated", "downloaded", "generated", "generated"]
 
 
-def test_library(executable, policy, tmp_path):
+def test_library(executable, policy, pytestconfig):
     """libvetter (zrun.h's C API, called through ctypes as C would): each
     command decided as vetter check decides it (built as the executable
-    is, after it)"""
+    is, after it; once for these sources)"""
     import ctypes
 
     from vetter.policy.language import where
 
-    lib_path = build.build_library(str(tmp_path / "libvetter"))
+    lib_path = cached_build(pytestconfig, "lib", lambda d: build.build_library(str(d / "libvetter")))
 
     class S(ctypes.Structure):
         _fields_ = [("ptr", ctypes.c_char_p), ("len", ctypes.c_size_t)]

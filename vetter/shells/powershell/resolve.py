@@ -46,6 +46,7 @@ from .cmdlets import (
     RISKY_METHODS,
     RISKY_TYPES,
 )
+from . import values
 from .syntax import bareword_value, dq_value, fold, fold_upper, here_value, literal_word, parse, sq_value, unquote
 
 
@@ -66,10 +67,14 @@ class PW:
     via: tuple
     by_command: dict
     source: str
+    # (Set-Alias's: folded alias -> the command's name)
+    aliases: dict
+    # ($PSDefaultParameterValues['Cmdlet:Param'] = v: folded key -> v)
+    defaults: dict
 
 
 def walker(r, home, depth):
-    return PW(r, W(r), home, depth, {}, {}, None, (), {}, "")
+    return PW(r, W(r), home, depth, {}, {}, None, (), {}, "", {}, {})
 
 
 @dataclass
@@ -169,6 +174,7 @@ def script(rt, pw, tree, cwd, via, source):
                 pw.by_command[cmd.start] = pw.r.executions[first]
         expression_redirects(rt, pw, stmt)
         effects(rt, pw, stmt)
+        forget_changed(pw, stmt)
     for pipe in nodes_of(tree, "pipe", []):
         pipeline(rt, pw, pipe)
     dotnet(rt, pw, tree)
@@ -238,6 +244,13 @@ def pipeline(rt, pw, pipe):
         text = None
         if prev.rule == "expression":
             text = constant_text(rt, prev)
+            # ((Invoke-WebRequest ...).Content | ...: what it downloads)
+            if text is None and downloader_under(prev) is not None:
+                for c in nodes_of(prev, "command", []):
+                    if c.start in pw.by_command and producer is None:
+                        e0 = pw.by_command[c.start]
+                        if exec_name(e0) in DOWNLOADING:
+                            producer = e0
         e.stdin = Stdin(text, producer)
         pwsh = False
         for r in e.roles:
@@ -287,10 +300,81 @@ def effects(rt, pw, stmt):
     var = lv.children[0] if lv is not None and len(lv.children) > 0 else None
     name = fold(var.text[1:]) if var is not None and var.text.startswith("$") else None
     value = constant(rt, a)
+    computed = None
+    rhs = first_child(a, "statement")
+    op = first_child(a, "assign_op")
+    if value is None and rhs is not None and op is not None and op.text == "=":
+        # (a value built from pieces: $a + '-Item', -join (...), ...)
+        computed = values.value(rt, pw, rhs)
+        if isinstance(computed, str):
+            value = computed
+    if name is not None and name.startswith("psdefaultparametervalues[") and value is not None:
+        # ($PSDefaultParameterValues['Set-Alias:Name'] = 'x': what a
+        # cmdlet's parameter is when it isn't given)
+        key = default_key(var)
+        if key is not None:
+            pw.defaults[key] = value
+        return
     if name is not None and name != "" and name.startswith("env:"):
-        pw.env[fold_upper(name[4:])] = Field([value], False, False) if value is not None else value_of(pw, a)
+        pw.env[fold_upper(name[4:])] = Field([value], False, False) if value is not None else env_value(rt, pw, a)
     if name is not None and is_plain_name(name):
-        pw.vars[name] = value if value is not None else field_static(value_of(pw, a))
+        if computed is not None and not isinstance(computed, str):
+            pw.vars[name] = computed
+        else:
+            pw.vars[name] = value if value is not None else field_static(value_of(pw, a))
+
+
+def env_value(rt, pw, assignment):
+    """$env:X = "...": a "string" with what's known in it known, the rest
+    dynamic ("$env:TEMP;$env:PATH": the temp directory, then what only
+    running tells)."""
+    rhs = first_child(assignment, "statement")
+    atoms = string_atoms(rhs) if rhs is not None else []
+    if len(atoms) != 1 or atoms[0].rule != "dq_string" or atoms[0].text != strip(rhs.text):
+        return value_of(pw, assignment)
+    parts = []
+    for k in atoms[0].children:
+        if k.rule == "dq_text":
+            parts.append(k.text)
+        elif k.rule == "variable":
+            v = variable(pw, k.text)
+            parts.append(v.replace("/", "\\") if v is not None else Dynamic(k, ""))
+        elif k.rule == "dq_escape":
+            parts.append(k.text[1:])
+        else:
+            parts.append(Dynamic(k, ""))
+    return Field(parts, False, False)
+
+
+def forget_changed(pw, stmt):
+    """A variable a method is called on or given to ([Array]::Reverse($a),
+    $list.Add(1)) may be changed in place: its value forgotten (one
+    computed would be wrong)."""
+    for kind in ("postfix_expr", "postfix_expr_arg"):
+        for node in nodes_of(stmt, kind, []):
+            calls = False
+            for k in node.children:
+                if k.rule == "invoke":
+                    calls = True
+            if not calls:
+                continue
+            for v in nodes_of(node, "variable", []):
+                name = fold(strip_chars(v.text[1:], "{}"))
+                if name in pw.vars:
+                    pw.vars[name] = None
+
+
+def default_key(var):
+    """$PSDefaultParameterValues['Cmdlet:Param']'s key, folded."""
+    for k in var.children:
+        if k.rule == "index" and len(k.children) > 0:
+            atoms = string_atoms(k)
+            if len(atoms) == 1 and atoms[0].rule == "sq_string":
+                return fold(sq_value(atoms[0].text))
+            if len(atoms) == 1:
+                v = dq_value(atoms[0])
+                return fold(v) if v is not None else None
+    return None
 
 
 def is_plain_name(name):
@@ -378,7 +462,15 @@ def command(rt, pw, node):
             if r == "scriptblock":
                 # (its commands are found where they are)
                 return
-            name_field = atom(pw, k)
+            v = values.value(rt, pw, k)
+            if isinstance(v, list) and len(v) == 1:
+                v = v[0]
+            if isinstance(v, values.Block):
+                # (& $block, [scriptblock]::Create('...'): its code runs)
+                code(rt, pw, v.text, span, "script block")
+                return
+            t = values.text_of(v) if v is not None else None
+            name_field = Field([t], False, False) if t is not None and t != "" else atom(pw, k)
     if name_field is None:
         return
     argv_tail = []
@@ -399,6 +491,17 @@ def command(rt, pw, node):
         return
     name = field_static(name_field)
     base = fold(paths.program_name(name))
+    if base in pw.aliases and "/" not in name and "\\" not in name:
+        # (an alias Set-Alias made: the command it names)
+        if pw.aliases[base] is None:
+            pw.r.executions.append(execution([name_field] + argv_tail, {}, reds, pw.cwd, span, pw.via, None, "program"))
+            note(rt, pw, name + ": an alias for what only running tells", span, "code", [])
+            return
+        name = pw.aliases[base]
+        name_field = Field([name], False, False)
+        base = fold(paths.program_name(name))
+    if base == "set-alias" or base == "sal" or base == "new-alias" or base == "nal":
+        record_alias(pw, words)
     if fold(name).endswith(".ps1"):
         pw.r.executions.append(execution([name_field] + argv_tail, {}, reds, pw.cwd, span, pw.via, None, "program"))
         note(rt, pw, "runs the PowerShell script " + name, span, "code_file", [name_field])
@@ -415,6 +518,51 @@ def command(rt, pw, node):
         cmdlet(rt, pw, CMDLETS[canonical], words, reds, span)
         return
     native(rt, pw, name_field, argv_tail, command_line(words, verbatim_text), reds, span, pw.via)
+
+
+def record_alias(pw, words):
+    """Set-Alias [-Name] N [-Value] V: N names V from here (a parameter
+    not given: $PSDefaultParameterValues' 'Set-Alias:Name' and the like)."""
+    given = {}
+    positional = []
+    pending = None
+    for w in words:
+        if w.kind == "param":
+            p = fold(w.name)
+            key = "name" if "name".startswith(p) else ("value" if "value".startswith(p) else None)
+            if w.fields is not None and len(w.fields) > 0:
+                if key is not None:
+                    given[key] = w.fields[0]
+            else:
+                pending = key
+        elif w.kind == "arg" and len(w.fields) > 0:
+            if pending is not None:
+                given[pending] = w.fields[0]
+                pending = None
+            else:
+                positional.append(w.fields[0])
+    for key in ("name", "value"):
+        if key not in given and len(positional) > 0:
+            given[key] = positional.pop(0)
+    out = {}
+    for key in ("name", "value"):
+        if key in given:
+            if not field_known(given[key]):
+                if key == "value" and "name" in out:
+                    # (an alias for what only running tells)
+                    pw.aliases[fold(out["name"])] = None
+                return
+            out[key] = field_static(given[key])
+        else:
+            found = None
+            for prefix in ("set-alias:", "new-alias:", "*:"):
+                if prefix + key in pw.defaults:
+                    found = pw.defaults[prefix + key]
+                    break
+            if found is None:
+                return
+            out[key] = found
+    pw.aliases[fold(out["name"])] = out["value"]
 
 
 def quote_arg(s):
@@ -518,6 +666,11 @@ def atom(pw, n):
             v = variable(pw, first.text)
             if v is not None:
                 return Field([v], False, False)
+        # (a value built from pieces: ('C:\Users\x\'+'project'); an array,
+        # several values for one argument: not one path)
+        v = values.value(None, pw, n)
+        if isinstance(v, str) or isinstance(v, int):
+            return Field([values.text_of(v)], False, False)
     return Field([Dynamic(n, "")], False, False)
 
 
@@ -559,7 +712,8 @@ def variable(pw, text):
     if (name == "env:temp" or name == "env:tmp") and known_home and paths.is_windows(pw.home):
         return pw.home + "/AppData/Local/Temp"
     if name in pw.vars:
-        return pw.vars[name]
+        v = pw.vars[name]
+        return v if isinstance(v, str) else None
     if name.startswith("env:") and known_home and paths.is_windows(pw.home):
         env = default_env(pw.home, None)
         key = fold_upper(name[4:])
@@ -570,6 +724,39 @@ def variable(pw, text):
 # ----------------------------------------------------------------------
 # Cmdlets
 # ----------------------------------------------------------------------
+
+
+def downloads_in(f):
+    """The downloading command a value only running tells comes from
+    ((Invoke-WebRequest ...).Content, $(iwr ...)), or None."""
+    for p in f.parts:
+        if isinstance(p, Dynamic) and p.node is not None:
+            found = downloader_under(p.node)
+            if found is not None:
+                return found
+    return None
+
+
+def downloader_under(node):
+    """The first downloading command in a node (a cmdlet's alias too)."""
+    for c in nodes_of(node, "command", []):
+        for k in c.children:
+            if k.rule == "cmd_name":
+                n = fold(literal_word(k.text))
+                n = ALIASES[n] if n in ALIASES else n
+                for d in DOWNLOADING:
+                    if fold(d) == n:
+                        return d
+    return None
+
+
+def variable_value(pw, text):
+    """A variable's value as values.py has them (a list, a script block, a
+    command...), else as variable() knows it."""
+    name = fold(strip_chars(text[1:], "{}"))
+    if name in pw.vars and not isinstance(pw.vars[name], str):
+        return pw.vars[name]
+    return variable(pw, text)
 
 
 @dataclass
@@ -709,6 +896,9 @@ def role(rt, pw, e, pname, r, f, span):
     elif r == "pwsh":
         if field_known(f):
             code(rt, pw, field_static(f), span, str(name))
+        elif downloads_in(f) is not None:
+            # (iex (Invoke-WebRequest ...).Content: what it downloads)
+            note(rt, pw, str(name) + " runs what " + str(downloads_in(f)) + " downloads", span, "downloaded_code", [])
         else:
             note(rt, pw, str(name) + ": PowerShell code only running tells", span, "code", [])
     elif r == "code_file":
@@ -732,6 +922,8 @@ def code(rt, pw, text, span, label):
         inner = walker(pw.r, pw.home, pw.depth + 1)
         inner.vars = {k: v for k, v in pw.vars.items()}
         inner.env = {k: v for k, v in pw.env.items()}
+        inner.aliases = pw.aliases
+        inner.defaults = pw.defaults
         tree = parse(rt, text)
         # (what runs inside is pointed at where the outer command is)
         executions = len(pw.r.executions)

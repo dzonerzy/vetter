@@ -5,8 +5,8 @@ as recorded (tests/golden), on the corpus and generated commands."""
 import pytest
 import zgram
 
+import shared
 from golden import compare, load_golden
-from vetter import engine
 from vetter.shells.bash import syntax
 
 
@@ -36,8 +36,7 @@ def read(rt, command):
 
 @pytest.fixture(scope="module")
 def program():
-    lang = engine.language({"read": read})
-    return engine.load(lang, {"read": ["command"]})
+    return shared.program()
 
 
 @pytest.mark.parametrize("mode", ["python", "compiled"])

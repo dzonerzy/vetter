@@ -18,6 +18,14 @@ dependencies = ["zrun-py>=0.7.3,<0.8", "zgram-py>=0.6,<0.7", "zrules-py>=0.2.0,<
 [project.optional-dependencies]
 # (vetter.build: the hook as an executable, libvetter)
 build = ["zrun-py[exe]>=0.7.3,<0.8"]
+# (the tests: in parallel, a file a worker)
+test = ["pytest>=8", "pytest-xdist>=3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# (each test file in a worker of its own; vetter compiled once before them,
+# conftest.py; the standalone builds only with --build)
+addopts = "-n auto --dist loadfile"
 
 [project.scripts]
 vetter = "vetter.cli:main"

@@ -3,6 +3,7 @@ and carets, commands (if, for, blocks, rem). A line whose reading can't be
 known: ValueError("unreadable: ...").
 
     seq, expanded = parse(line, env, delayed)
+    text = expand_marks(text, env, "!")      # a command's !VAR!, as it runs
 """
 
 from dataclasses import dataclass
@@ -684,8 +685,10 @@ def command_from_text(text):
 
 
 def parse(line, env, delayed):
-    """The line read: (a Seq of commands, the expanded line)."""
-    expanded = expand(line, env, delayed)
+    """The line read: (a Seq of commands, the expanded line). Its %VAR%
+    expanded now, as cmd reads a line; !VAR! (delayed) left for each
+    command as it runs (resolve.py: a `set` before it on the line counts)."""
+    expanded = expand(line, env, False)
     p = P(tokens(expanded), 0, expanded)
     seq = sequence(p, False)
     tok = peek(p, True)

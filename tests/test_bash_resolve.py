@@ -7,8 +7,8 @@ corpus and generated commands, with a working directory and without."""
 import pytest
 import zgram
 
+import shared
 from golden import compare, load_golden
-from vetter import engine
 from vetter.shells.bash import expand, resolve
 
 
@@ -57,8 +57,7 @@ def resolved(rt, command, cwd, home):
 
 @pytest.fixture(scope="module")
 def program():
-    lang = engine.language({"resolve": resolved})
-    return engine.load(lang, {"resolve": ["command", "cwd", "home"]})
+    return shared.program()
 
 
 @pytest.mark.parametrize("mode", ["python", "compiled"])

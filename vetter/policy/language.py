@@ -965,10 +965,18 @@ def match_rule(pl, m, part, act):
         prod = part.producer
         if prod is None:
             return Why(False, "nothing is piped into it")
+        # (what's piped in through others too: curl | tee log | sh)
         pw = match_item(pl, m.producer, prod, None)
+        first = prod
+        depth = 0
+        while not pw.ok and prod.producer is not None and depth < 16:
+            prod = prod.producer
+            depth += 1
+            pw = match_item(pl, m.producer, prod, None)
         if not pw.ok:
             return Why(False, "what's piped into it: " + pw.why if pl.trace else "")
-        why = (prod.name if nonempty(prod.name) else "?") + " | " + why
+        through = " | ... " if prod is not first else " | "
+        why = (prod.name if nonempty(prod.name) else "?") + through + why
     for clause_kind, conds in m.clauses:
         results = [match_cond(pl, c, part, act) for c in conds]
         if clause_kind == "unless":
@@ -1070,7 +1078,10 @@ def decide_action(p, pl, part, act):
                 steps.append(Step(rule, True, why))
                 return ActionDecision(act, rule.decision, rule, rule.reason + ": " + why, "rule", steps)
         steps.append(Step(rule, False, why))
-    if act.kind is not None or part.name is None:
+    # (a file only running tells: what it is vetter can't see, not a file
+    # no rule names)
+    hidden_file = act.verb in FILE_VERBS and act.path is None
+    if act.kind is not None or part.name is None or hidden_file:
         seen = part.label if part.unknown else action_text(act)
         return ActionDecision(act, p.unknown, None, "vetter can't see: " + seen, "unknown", steps)
     return ActionDecision(act, p.default, None, "no rule for " + action_text(act), "default", steps)

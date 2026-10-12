@@ -10,7 +10,7 @@ Windows shells started from bash are windows_shell()'s.
     r = resolve(rt, "cd src && rm -rf build", "/home/u/p", "/home/u")
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import zgram
 
@@ -111,6 +111,9 @@ class Execution:
     # (a PowerShell cmdlet vetter knows; one that only reads)
     cmdlet: bool
     readonly: bool
+    # (what it reads another command's output through, not on its stdin:
+    # bash <(curl ...), the curl)
+    fed: object = None
 
 
 def execution(argv, env, redirects, cwd, span, via, stdin, kind):
@@ -169,6 +172,10 @@ class W:
     parameter: rt.parse() is compiled as zrun's when rt is known as rt.)"""
 
     r: object
+    # (each process substitution, by where it starts in the text: <(cmd)'s
+    # last execution, the one whose output is read; >(cmd)'s Stdin, its
+    # producer the command it's given to, set when that one runs)
+    procs: dict = field(default_factory=dict)
 
 
 def copy(ctx):
@@ -491,10 +498,33 @@ def substitution(rt, w,node, ctx):
         inner.source = tick.command.source
         seq(rt, w,tick.command.tree, inner)
         return
+    key = ctx.base + offset(ctx.source, node)
     if node.rule == "procsub" and node.text.startswith(">"):
+        # (what it reads: the output of the command it's given to)
         inner.stdin = Stdin(None, None)
+        w.procs[key] = inner.stdin
+    first = len(w.r.executions)
     for k in children(node, "compound_list"):
         seq(rt, w,k, inner)
+    if node.rule == "procsub" and node.text.startswith("<") and len(w.r.executions) > first:
+        w.procs[key] = w.r.executions[len(w.r.executions) - 1]
+
+
+def link_procsubs(w, ctx, e, fields):
+    """The command e given <(cmd) (as a word or a redirection's target):
+    fed by cmd; given >(cmd): cmd's producer."""
+    for f in fields:
+        for p in f.parts:
+            if not isinstance(p, Dynamic) or p.node is None or p.node.rule != "procsub":
+                continue
+            key = ctx.base + offset(ctx.source, p.node)
+            if key not in w.procs:
+                continue
+            v = w.procs[key]
+            if isinstance(v, Stdin):
+                v.producer = e
+            elif e.fed is None:
+                e.fed = v
 
 
 def backtick(node, ctx):
@@ -578,6 +608,7 @@ def simple(rt, w,node, ctx, stdin):
     first = len(w.r.executions)
     run(rt, w,argv, env, reds, ctx, span, given, None)
     w.r.executions[first].words = written
+    link_procsubs(w, ctx, w.r.executions[first], argv + [r.target for r in reds if r.target is not None])
 
 
 def expanded_later(rt, w, ctx, span, name, value):
@@ -708,6 +739,7 @@ def assign(node, ctx, variables):
     arr = children(node, "array")
     val = children(node, "word")
     value = UNKNOWN
+    expanded = None
     if len(arr) > 0:
         fields = []
         for x in children(arr[0], "word"):
@@ -722,6 +754,7 @@ def assign(node, ctx, variables):
             value = statics
     else:
         f = expand_assignment(val[0] if len(val) > 0 else None, variables, ctx.home)
+        expanded = f
         s = field_static(f)
         if s is not None:
             value = s
@@ -749,6 +782,9 @@ def assign(node, ctx, variables):
         return name, Field([value], False, False)
     if isinstance(value, list):
         return name, Field([" ".join(value)], False, False)
+    if expanded is not None and op == "=":
+        # (what's known of it kept: PATH=/tmp/x:$PATH, /tmp/x)
+        return name, expanded
     return name, Field([Dynamic(node, "")], False, False)
 
 

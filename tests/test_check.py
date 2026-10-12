@@ -6,6 +6,7 @@ action's; traced (`vetter why --all`), every rule's step and why."""
 
 import pytest
 
+import shared
 from golden import compare, load_golden
 from tools.corpus.decide_corpus import PAYLOAD_POLICY
 from vetter import engine
@@ -43,9 +44,7 @@ def traced(rt, command, shell, cwd, home, text, filename):
 
 @pytest.fixture(scope="module")
 def program():
-    lang = engine.language({"decide": decide, "traced": traced})
-    args = ["command", "shell", "cwd", "home", "text", "filename"]
-    return engine.load(lang, {"decide": args, "traced": args})
+    return shared.program()
 
 
 def run_case(program, case, mode):

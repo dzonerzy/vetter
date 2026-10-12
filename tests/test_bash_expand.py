@@ -6,8 +6,8 @@ corpus and generated words, for several sets of variables."""
 import pytest
 import zgram
 
+import shared
 from golden import compare, load_golden
-from vetter import engine
 from vetter.shells.bash import expand, syntax
 
 VARIABLES = [
@@ -73,8 +73,7 @@ def expand_all(rt, command, values, home):
 
 @pytest.fixture(scope="module")
 def program():
-    lang = engine.language({"expand": expand_all})
-    return engine.load(lang, {"expand": ["command", "values", "home"]})
+    return shared.program()
 
 
 @pytest.mark.parametrize("mode", ["python", "compiled"])
