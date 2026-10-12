@@ -367,11 +367,6 @@ def has_modifier(body, var):
     return False
 
 
-# ----------------------------------------------------------------------
-# Structure
-# ----------------------------------------------------------------------
-
-
 def node(rt, w, n):
     if isinstance(n, list):
         # (a pipeline: each reads the one before)
@@ -593,11 +588,6 @@ def path_parts(v, mods, cwd):
     if "x" in mods:
         out += ext
     return out
-
-
-# ----------------------------------------------------------------------
-# Commands
-# ----------------------------------------------------------------------
 
 
 def conhost_rest(args):

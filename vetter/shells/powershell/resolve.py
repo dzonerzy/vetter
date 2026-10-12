@@ -166,11 +166,6 @@ def note(rt, pw, reason, span, kind, given):
     unknown(rt, pw.bash, reason, span, ctx_of(pw), kind, given)
 
 
-# ----------------------------------------------------------------------
-# Statements
-# ----------------------------------------------------------------------
-
-
 def script(rt, pw, tree, cwd, via, source):
     pw.cwd = cwd
     pw.via = via
@@ -606,11 +601,6 @@ def constant(rt, assignment):
     return None
 
 
-# ----------------------------------------------------------------------
-# Commands
-# ----------------------------------------------------------------------
-
-
 def command(rt, pw, node):
     span = span_of(pw, node)
     invocation = None
@@ -818,11 +808,6 @@ def redirect(rt, pw, node):
     return Redirect(fd, op, atom(pw, target), None)
 
 
-# ----------------------------------------------------------------------
-# Values
-# ----------------------------------------------------------------------
-
-
 def fields(pw, node):
     """An argument's values (an array a,b: each)."""
     out = []
@@ -907,11 +892,6 @@ def variable(pw, text):
         key = fold_upper(name[4:])
         return env[key].replace("\\", "/") if key in env else None
     return None
-
-
-# ----------------------------------------------------------------------
-# Cmdlets
-# ----------------------------------------------------------------------
 
 
 def default_value(pw, cmdlet_name, param):
@@ -1148,11 +1128,6 @@ def role(rt, pw, e, pname, r, f, span):
         note(rt, pw, str(name) + " -" + str(pname) + ": changes what Windows lets run", span, "persistent", [])
 
 
-# ----------------------------------------------------------------------
-# Code in strings
-# ----------------------------------------------------------------------
-
-
 def code(rt, pw, text, span, label):
     if pw.depth >= MAX_DEPTH:
         note(rt, pw, label + ": nested too deep", span, "code", [])
@@ -1301,11 +1276,6 @@ def launched(rt, pw, args, span):
             texts.append(field_static(f))
         code(rt, pw, " ".join(texts), span, "powershell")
         return
-
-
-# ----------------------------------------------------------------------
-# Command lines, base64, UTF-16
-# ----------------------------------------------------------------------
 
 
 def windows_argv(line):

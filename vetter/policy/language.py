@@ -143,11 +143,6 @@ def policy_error(message):
     return ValueError("policy: " + message)
 
 
-# ----------------------------------------------------------------------
-# Loading
-# ----------------------------------------------------------------------
-
-
 def unquote(node):
     t = node.text
     if not t.startswith('"'):
@@ -374,10 +369,8 @@ def braces(s):
     return [s]
 
 
-# ----------------------------------------------------------------------
 # What stops a policy loading: checks.py's errors (`vetter lint`'s), here
 # for the hook too
-# ----------------------------------------------------------------------
 
 # (the places vetter knows when it decides)
 PLACE_VARS = ["$home", "$project", "$temp"]
@@ -547,11 +540,6 @@ def add_project(rt, p, text, filename):
     return [r for r in project.rules if r.decision == "allow"]
 
 
-# ----------------------------------------------------------------------
-# A policy's tests (`vetter test`), its rules never reached
-# ----------------------------------------------------------------------
-
-
 def test_decision(rt, p, command, shell):
     """A test's command decided, in the tests' places (a Windows project for
     PowerShell and cmd)."""
@@ -671,11 +659,6 @@ def places_cover(pa, pb):
         if not one:
             return False
     return True
-
-
-# ----------------------------------------------------------------------
-# Matching, with reasons
-# ----------------------------------------------------------------------
 
 
 @dataclass
@@ -994,11 +977,6 @@ def match_rule(pl, m, part, act):
                 return Why(False, why + ", but not with " + ", ".join([r.why for r in results]) if pl.trace else "")
             why += ", with " + hit
     return Why(True, why)
-
-
-# ----------------------------------------------------------------------
-# Deciding
-# ----------------------------------------------------------------------
 
 
 def rank_above(a, b):

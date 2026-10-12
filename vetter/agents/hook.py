@@ -33,11 +33,6 @@ CLINE_TOOLS = ("execute_command", "run_commands")
 AGENTS = ("claude", "codex", "gemini", "cursor", "copilot", "cline", "amp", "opencode", "json")
 
 
-# ----------------------------------------------------------------------
-# The agents' requests and answers
-# ----------------------------------------------------------------------
-
-
 @dataclass
 class Call:
     command: object
@@ -224,11 +219,6 @@ def answer(agent, mode, decision, reason, default):
             return {"cancel": True, "errorMessage": reason}
         return {"cancel": False}
     return {"decision": decision, "reason": reason, "default": default}
-
-
-# ----------------------------------------------------------------------
-# The hook
-# ----------------------------------------------------------------------
 
 
 def decide(rt, agent, request, policy_path):

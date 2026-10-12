@@ -89,11 +89,6 @@ def test_as_recorded(program, policy, mode, fake_home):
         assert same_as_recorded(c, g), c["in"]
 
 
-# ----------------------------------------------------------------------
-# Each agent's rules
-# ----------------------------------------------------------------------
-
-
 def claude_req(cmd, tool="Bash", cwd=CWD):
     return {"tool_name": tool, "tool_input": {"command": cmd}, "cwd": cwd, "hook_event_name": "PreToolUse"}
 
@@ -302,11 +297,6 @@ def test_policy_with_errors(program, policy, tmp_path):
         assert ".vetter.vet:1:25: buidl isn't a place or a list" in out["hookSpecificOutput"]["permissionDecisionReason"]
 
 
-# ----------------------------------------------------------------------
-# Built: the executable, the library
-# ----------------------------------------------------------------------
-
-
 def build_key():
     """What a build is made from: vetter's sources, and the zrun and zgram
     in use (their modules' size and time: a local build changes them)."""
@@ -443,11 +433,6 @@ def test_library(executable, policy, pytestconfig):
             d = engine.call("check", p, command, shell, CWD, home, project_root(CWD, home), temp_dirs(home, True))
             assert got == {"decision": d.decision, "reason": d.reason, "rule": where(d.rule) if d.rule else None,
                            "by": d.by, "span": list(d.span)}
-
-
-# ----------------------------------------------------------------------
-# Installing
-# ----------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("agent", ["claude", "codex", "gemini", "cursor", "copilot", "vscode", "amp", "opencode",

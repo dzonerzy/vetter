@@ -113,11 +113,6 @@ SPACES = "\t\n\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0          "
          "      　"
 
 
-# ----------------------------------------------------------------------
-# Small readers (what specs/__init__.py does with re)
-# ----------------------------------------------------------------------
-
-
 def is_space(c):
     return c in SPACES
 
@@ -216,11 +211,6 @@ def config_role(spec, key):
         if "*" in pat and match(key, pat):
             return role
     return None
-
-
-# ----------------------------------------------------------------------
-# Reading the arguments
-# ----------------------------------------------------------------------
 
 
 @dataclass
@@ -458,11 +448,6 @@ def operand_roles(spec, operands):
         else:
             out.append((rest_role, o))
     return out
-
-
-# ----------------------------------------------------------------------
-# Applying
-# ----------------------------------------------------------------------
 
 
 def anywhere_options(rt, w, e, ctx, spec, args):

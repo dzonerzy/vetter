@@ -174,11 +174,6 @@ def is_ch(item, c):
     return item.kind == CH and not item.quoted and item.c == c
 
 
-# ----------------------------------------------------------------------
-# Small readers (what expand.py does with re)
-# ----------------------------------------------------------------------
-
-
 def is_digit(c):
     return c >= "0" and c <= "9" and len(c) == 1
 
@@ -267,11 +262,6 @@ def zfill(s, width):
     return sign + s
 
 
-# ----------------------------------------------------------------------
-# The word's items, before any expansion
-# ----------------------------------------------------------------------
-
-
 def items_of(node):
     """The word's characters and expansions, quoting kept."""
     if node.rule == "cmd_name":
@@ -324,11 +314,6 @@ def dq_items(node, heredoc, out):
         else:
             out.append(Item(EXP, "", True, False, p))
     return out
-
-
-# ----------------------------------------------------------------------
-# Brace expansion
-# ----------------------------------------------------------------------
 
 
 def braces(items, budget):
@@ -440,10 +425,6 @@ def steps(a, b, step):
 def unsigned(s):
     return s[1:] if s[:1] == "-" else s
 
-
-# ----------------------------------------------------------------------
-# Parameters
-# ----------------------------------------------------------------------
 
 OPS = [":-", ":=", ":+", ":?", "-", "=", "+", "?", "##", "#", "%%", "%", "//", "/#", "/%", "/",
        "^^", "^", ",,", ","]
@@ -751,11 +732,6 @@ def substring(v, spec):
     if length is None:
         return t
     return t[:length] if length >= 0 else t[: max(0, len(t) + length)]
-
-
-# ----------------------------------------------------------------------
-# Expanding
-# ----------------------------------------------------------------------
 
 
 def is_user(s):

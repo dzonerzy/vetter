@@ -254,11 +254,6 @@ def children(node, rule):
     return out
 
 
-# ----------------------------------------------------------------------
-# Structure
-# ----------------------------------------------------------------------
-
-
 def seq(rt, w,node, ctx):
     """A list: its and-or lists in order; a backgrounded one runs in a
     subshell."""
@@ -477,11 +472,6 @@ def function_def(rt, w,node, ctx):
     compound(rt, w,body.children[0], inner)
 
 
-# ----------------------------------------------------------------------
-# Substitutions
-# ----------------------------------------------------------------------
-
-
 def substitutions(rt, w,node, ctx):
     """The substitutions in a node (not nested in others: theirs are
     theirs), each run in a subshell."""
@@ -552,11 +542,6 @@ def backtick(node, ctx):
         if t.start == start:
             return t
     return None
-
-
-# ----------------------------------------------------------------------
-# Simple commands
-# ----------------------------------------------------------------------
 
 
 def simple(rt, w,node, ctx, stdin):
@@ -965,11 +950,6 @@ def stdin_of(reds, ctx):
     return out
 
 
-# ----------------------------------------------------------------------
-# Running
-# ----------------------------------------------------------------------
-
-
 def ascii_lower(s):
     out = ""
     for c in s:
@@ -1033,7 +1013,6 @@ def run(rt, w,argv, env, reds, ctx, span, stdin, via):
             windows_shell(rt, w,e, ctx, low)
     apply_specs(rt, w,e, ctx)
     builtin_effects(rt, w,e, ctx)
-
 
 
 def windows_shell(rt, w, e, ctx, name):
@@ -1685,11 +1664,6 @@ def echo_output(name, args):
         if len(rest) == 0:
             break
     return out.replace("\0", "%")
-
-
-# ----------------------------------------------------------------------
-# Wrappers: programs that run another
-# ----------------------------------------------------------------------
 
 
 def xargs_arg_files(options):

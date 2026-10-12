@@ -65,11 +65,6 @@ def load(lang, entries):
     return lang.load(text, "vetter")
 
 
-# ----------------------------------------------------------------------
-# The CLI's: vetter's functions run as Python
-# ----------------------------------------------------------------------
-
-
 def _entries():
     from .agents import hook, log
     from .check import check

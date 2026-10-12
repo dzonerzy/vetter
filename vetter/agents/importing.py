@@ -15,9 +15,7 @@ import datetime
 import json
 import re
 
-# ----------------------------------------------------------------------
 # Claude Code: permissions.allow / ask / deny
-# ----------------------------------------------------------------------
 
 _ENTRY = re.compile(r"^(?P<tool>[A-Za-z]+)(?:\((?P<arg>.*)\))?$", re.S)
 _OPERATORS = re.compile(r"[;&|<>`$()\n]")
@@ -129,9 +127,7 @@ def from_claude(settings, where="~/.claude/settings.json", today=None):
     return _footer(lines, skipped)
 
 
-# ----------------------------------------------------------------------
 # Codex: execpolicy's prefix_rule(...) in ~/.codex/rules/*.rules
-# ----------------------------------------------------------------------
 
 _CODEX_DECISIONS = {"allow": "allow", "prompt": "ask", "forbidden": "deny"}
 
@@ -198,9 +194,6 @@ def from_codex(files, where="~/.codex/rules", today=None):
             reason = _q(f"codex: {why}" if why else f"codex: {' '.join(map(str, pattern))}")
             lines.append(f"{d} {reason} " + " ".join(levels) + "".join(withs) + (f"   # ({note})" if note else ""))
     return _footer(lines, skipped)
-
-
-# ----------------------------------------------------------------------
 
 
 def _header(agent, where, today):

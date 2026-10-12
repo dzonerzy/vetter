@@ -115,11 +115,6 @@ def raw(a, lo, hi):
     return out
 
 
-# ----------------------------------------------------------------------
-# What evaluating it does
-# ----------------------------------------------------------------------
-
-
 def check(a, lo, hi, variables, home, out):
     """Findings of evaluating a.text[lo:hi] (added to out, each once)."""
     scan(a, lo, hi, variables, home, 0, out)
@@ -272,11 +267,6 @@ def assigned(a):
             out.append(name)
         i = k
     return out
-
-
-# ----------------------------------------------------------------------
-# Values surely numbers
-# ----------------------------------------------------------------------
 
 
 def hole_is_number(d, variables, home):
