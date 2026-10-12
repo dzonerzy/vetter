@@ -439,7 +439,14 @@ def command(p):
     name, rest = split_name(text)
     low = fold(name)
     if low == "if":
-        return if_command(p, rest, start)
+        # (if 1==1 echo x> f: the redirection, read with the words, is the
+        # command's after the condition)
+        node = if_command(p, rest, start)
+        if len(reds) > 0 and (isinstance(node.then, Simple) or isinstance(node.then, Block)):
+            node.then.redirections = node.then.redirections + reds
+        elif len(reds) > 0:
+            raise unreadable("an if's redirection vetter doesn't place")
+        return node
     if low == "for":
         return for_command(p, rest, start)
     if low == "rem" or (low.startswith("rem") and low[3] in ".:/\\(+[]"):

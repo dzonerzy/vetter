@@ -181,6 +181,7 @@ def script(rt, pw, tree, cwd, via, source):
             if len(pw.r.executions) > first:
                 pw.by_command[cmd.start] = pw.r.executions[first]
         expression_redirects(rt, pw, stmt)
+        provider_variables(pw, stmt)
         effects(rt, pw, stmt)
         method_effects(rt, pw, stmt)
         defaults_reached(pw, stmt)
@@ -190,13 +191,43 @@ def script(rt, pw, tree, cwd, via, source):
     dotnet(rt, pw, tree)
 
 
+def provider_variables(pw, stmt):
+    """${C:\\x\\flag}, $C:flag: a file's content as a variable's, read; one
+    assigned to, written."""
+    assigned = set()
+    for lv in nodes_of(stmt, "lvalue", []):
+        for v in nodes_of(lv, "variable", []):
+            assigned.add(v.start)
+    for v in nodes_of(stmt, "variable", []):
+        name = v.text[1:]
+        if name.startswith("{") and name.endswith("}"):
+            name = name[1 : len(name) - 1]
+        if len(name) < 3 or name[1] != ":" or not name[0].isalpha():
+            continue
+        rest = name[2:]
+        if rest.startswith("\\") or rest.startswith("/"):
+            path = name
+        elif pw.cwd is not None and len(pw.cwd) > 1 and fold(pw.cwd[:1]) == fold(name[:1]):
+            # ($C:flag: the drive's current folder's)
+            path = paths.join(pw.cwd, rest)
+        else:
+            path = None
+        e = execution([Field(["("], False, False)], {}, [], pw.cwd, span_of(pw, v), pw.via, None, "group")
+        f = Field([path], False, False) if path is not None else Field([Dynamic(v, "")], False, False)
+        e.roles.append(Role("write" if v.start in assigned else "read", f, None))
+        pw.r.executions.append(e)
+
+
 def expression_redirects(rt, pw, stmt):
     """A value's redirections ('text' > $PROFILE): the files written, with
     no command to carry them."""
+    # (a command's own, its children: one in a script block it's given,
+    # Invoke-Command {'x' > f}, isn't the command's)
     of_commands = set()
     for cmd in nodes_of(stmt, "command", []):
-        for r in nodes_of(cmd, "redirection", []):
-            of_commands.add(r.start)
+        for r in cmd.children:
+            if r.rule == "redirection":
+                of_commands.add(r.start)
     for node in nodes_of(stmt, "redirection", []):
         if node.start in of_commands:
             continue

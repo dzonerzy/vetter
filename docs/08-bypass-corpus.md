@@ -72,7 +72,15 @@ What vetter decides is checked against what the commands do:
   are bypasses no one wrote (aliases losing their redirections, `bash -i`'s
   history: `oracle.toml`).
 - `python tools/oracle/windows.py`: the cmd and PowerShell proofs run on the
-  real shells (from WSL).
+  real shells (from WSL). `--mutate`: reading, writing and deleting in a
+  protected folder, written ~1,400 ways (`tools/oracle/winmutate.py`:
+  carets, `set` and `call`, `for /f`, delayed expansion, `if`, pipes into
+  cmd, junctions, `move`; aliases, `&` and `Get-Command`, `iex`, script
+  blocks, `${C:\...}`, .NET; paths through `\\?\`, `\\.\`, the admin share,
+  a trailing dot or space, `::$DATA`, 8.3 names, case), the ones vetter
+  allows run and the effect looked for; `--all` runs every one (2026-10-12:
+  1,068 of 1,427 do what they say on Windows; vetter stops all 1,068, 896
+  denied).
 
 ## Sources to mine
 

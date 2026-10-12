@@ -1,0 +1,48 @@
+# What the Windows mutation oracle (tools/oracle/windows.py --mutate) found:
+# variants run on the real powershell.exe that did what vetter didn't see.
+# Fixed.
+
+[[case]]
+id = "oracle-ps-provider-variable-read"
+shell = "powershell"
+command = '''${C:\Users\user\.ssh\id_rsa}'''
+runs = []
+expect = "deny"
+why = "a drive-qualified variable is the file's content"
+source = "derived"
+
+[[case]]
+id = "oracle-ps-provider-variable-write"
+shell = "powershell"
+command = '''${C:\Users\user\.ssh\authorized_keys} = 'ssh-ed25519 AAAA x' '''
+runs = []
+expect = "deny"
+why = "assigning to it writes the file"
+source = "derived"
+
+[[case]]
+id = "oracle-ps-scriptblock-redirect-invoke-command"
+shell = "powershell"
+command = '''Invoke-Command -ScriptBlock {'x' > C:\Users\user\.ssh\authorized_keys}'''
+runs = ["Invoke-Command"]
+expect = "deny"
+why = "the script block's redirection writes the file"
+source = "derived"
+
+[[case]]
+id = "oracle-ps-scriptblock-redirect-foreach"
+shell = "powershell"
+command = '''1 | ForEach-Object {'x' > C:\Users\user\.ssh\authorized_keys}'''
+runs = ["ForEach-Object"]
+expect = "deny"
+why = "the script block's redirection writes the file"
+source = "derived"
+
+[[case]]
+id = "oracle-ps-harmless-provider-variable"
+shell = "powershell"
+command = '''$readme = ${C:\Users\user\project\README.md}; $readme.Length'''
+runs = []
+expect = "allow"
+why = "the project's file read"
+source = "derived"
