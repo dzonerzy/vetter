@@ -33,6 +33,8 @@ values = ["-S", "-B", "-D", "-U", "-G", "-T", "-A", "-C", "-P", "--build", "--in
           "--graphviz", "-j", "--parallel", "--target", "--config", "--prefix", "--component"]
 attached = ["-D", "-S", "-B", "-G", "-C"]
 [spec.roles]
+# (-DKEY=VALUE: a script it includes, CMAKE_PROJECT_INCLUDE...)
+"-D" = "cmake_define"
 "-P" = "code_file"
 "-C" = "code_file"
 "--toolchain" = "code_file"
@@ -53,12 +55,128 @@ operands = "read"
 
 [[spec]]
 name = ["java", "javaw"]
-values = ["-cp", "-classpath", "--class-path", "-p", "--module-path", "-m", "--module", "-jar"]
+values = ["-cp", "-classpath", "--class-path", "-p", "--module-path", "-m", "--module", "-jar", "--source"]
 single_dash_long = true
 stop_at_operand = true
-attached = ["-javaagent:", "-agentpath:"]
+attached = ["-javaagent:", "-agentpath:", "-agentlib:", "-Xbootclasspath/a:", "-Xbootclasspath/p:"]
 response_files = true
+# (its main class, or a .java source run; then the program's arguments)
+operands = ["java_main", "plain*"]
 [spec.roles]
 "-javaagent:" = "agent_file"
 "-agentpath:" = "agent_file"
+"-agentlib:" = "agent_file"
+"-Xbootclasspath/a:" = "classpath"
+"-Xbootclasspath/p:" = "classpath"
 "-jar" = "code_file"
+"-cp" = "classpath"
+"-classpath" = "classpath"
+"--class-path" = "classpath"
+"-p" = "classpath"
+"--module-path" = "classpath"
+
+[[spec]]
+name = ["javac"]
+values = ["-d", "-s", "-h", "-cp", "-classpath", "--class-path", "-sourcepath", "--source-path", "-processorpath",
+          "--processor-path", "-processor", "-p", "--module-path", "-encoding", "--release", "-source", "-target",
+          "-implicit", "-Xplugin"]
+single_dash_long = true
+attached = ["-Xplugin:"]
+response_files = true
+operands = "read"
+[spec.roles]
+"-d" = "write"
+"-s" = "write"
+"-h" = "write"
+# (annotation processors and plugins found on these paths run in javac)
+"-cp" = "classpath"
+"-classpath" = "classpath"
+"--class-path" = "classpath"
+"-processorpath" = "classpath"
+"--processor-path" = "classpath"
+"-p" = "classpath"
+"--module-path" = "classpath"
+
+[[spec]]
+name = ["ninja"]
+values = ["-f", "-C", "-j", "-l", "-k", "-d", "-t", "-w"]
+[spec.roles]
+# (the manifest: its rules are the commands it runs)
+"-f" = "code_file"
+"-C" = "cwd"
+
+[[spec]]
+name = ["gradle", "gradlew"]
+values = ["-I", "--init-script", "-b", "--build-file", "-c", "--settings-file", "-p", "--project-dir", "-D",
+          "--system-prop", "-P", "--project-prop", "-g", "--gradle-user-home", "--include-build", "-x",
+          "--exclude-task", "--console", "--warning-mode", "--max-workers"]
+attached = ["-D", "-P"]
+[spec.roles]
+# (scripts gradle runs: init scripts first, the build's and settings')
+"-I" = "code_file"
+"--init-script" = "code_file"
+"-b" = "code_file"
+"--build-file" = "code_file"
+"-c" = "code_file"
+"--settings-file" = "code_file"
+"-p" = "code_file"
+"--project-dir" = "code_file"
+"--include-build" = "code_file"
+"-g" = "configured"
+"--gradle-user-home" = "configured"
+
+[[spec]]
+name = ["mvn", "mvnw"]
+values = ["-f", "--file", "-s", "--settings", "-gs", "--global-settings", "-t", "--toolchains", "-D", "-P",
+          "-pl", "--projects", "-rf", "-T", "--threads", "-l", "--log-file"]
+single_dash_long = true
+attached = ["-D"]
+[spec.roles]
+# (the pom built: its plugins run)
+"-f" = "code_file"
+"--file" = "code_file"
+"-s" = "configured"
+"--settings" = "configured"
+"-gs" = "configured"
+"--global-settings" = "configured"
+"-l" = "write"
+"--log-file" = "write"
+
+[[spec]]
+name = ["zig"]
+subcommands = true
+commands = ["build", "build-exe", "build-lib", "build-obj", "test", "run", "fmt", "init", "fetch", "cc", "c++", "ar",
+            "translate-c", "env", "help", "version", "zen", "objcopy", "ast-check", "std", "libc", "targets",
+            "dlltool", "lib", "ranlib", "rc"]
+[spec.sub.run]
+# (its source files: built and run; after --, the program's arguments)
+values = ["-femit-bin", "-target", "-O", "-M", "--dep", "-I", "-L", "-l", "--cache-dir", "--global-cache-dir",
+          "--zig-lib-dir", "-mcpu"]
+attached = ["-femit-bin="]
+operands = "code_file"
+[spec.sub.run.roles]
+"--zig-lib-dir" = "code_file"
+"-femit-bin=" = "write"
+[spec.sub.test]
+values = ["-femit-bin", "-target", "-O", "-M", "--dep", "-I", "-L", "-l", "--test-filter", "--test-cmd",
+          "--zig-lib-dir", "--cache-dir", "--global-cache-dir"]
+operands = "code_file"
+[spec.sub.test.roles]
+"--test-cmd" = "program"
+"--zig-lib-dir" = "code_file"
+[spec.sub.build]
+values = ["--build-file", "--build-runner", "--prefix", "-p", "--cache-dir", "--global-cache-dir", "--zig-lib-dir",
+          "--search-prefix", "-j"]
+[spec.sub.build.roles]
+"--build-file" = "code_file"
+"--build-runner" = "code_file"
+"--zig-lib-dir" = "code_file"
+"--prefix" = "write"
+"-p" = "write"
+[spec.sub.build.flags]
+"build" = {reason = "runs the build.zig program", kind = "project_code"}
+[spec.sub.build-exe]
+values = ["-femit-bin", "-target", "-O", "-M", "--dep", "-I", "-L", "-l", "--zig-lib-dir"]
+operands = "read"
+[spec.sub.build-exe.roles]
+"--zig-lib-dir" = "code_file"

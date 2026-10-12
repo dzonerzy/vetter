@@ -22,7 +22,8 @@ from .. import paths
 from ..glob import match as fnmatch
 from ..shells.bash.syntax import nodes_of, offset
 from ..specs import SPECS, is_space, strip
-from .actions import action_text, parts
+from ..shells.bash.expand import field_static
+from .actions import Action, action_text, parts
 
 HERE = pathlib.Path(__file__).resolve().parent
 POLICIES = HERE / "builtin"
@@ -1030,6 +1031,47 @@ def followed(path, verb):
     return paths.norm(realpath(path))
 
 
+# Programs that import a test tree's conftest.py (and pytest's config files)
+PYTESTS = ("pytest", "py.test")
+PYTEST_FILES = ("conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini")
+
+
+def machine_actions(p, part):
+    """What a program does here that its command doesn't say, deciding on
+    this machine: git running what its repository's own config names
+    (core.fsmonitor=./w); pytest importing a conftest.py the agent wrote."""
+    from ..gitconfig import repo_config, runs_from
+
+    if part.name is None or part.unknown:
+        return []
+    e = part.what
+    cwd = e.cwd
+    if cwd is None:
+        return []
+    out = []
+    if part.name == "git":
+        for setting in runs_from(repo_config(cwd)):
+            out.append(Action("run", None, None, "configured", "the repository's git config: " + setting))
+    elif part.name in PYTESTS or ((part.name == "python" or part.name == "python3") and runs_pytest(e)):
+        # (its conftest.py files: under where it runs, and in the folders
+        # above it)
+        here = cwd.rstrip("/") + "/"
+        for path, kind in p.written.items():
+            folder, _, leaf = path.rpartition("/")
+            if leaf in PYTEST_FILES and (path.startswith(here) or here.startswith(folder + "/")):
+                out.append(Action("run", path, None, kind, "pytest imports " + path))
+    return out
+
+
+def runs_pytest(e):
+    """python -m pytest"""
+    words = [field_static(a) for a in e.argv]
+    for k in range(len(words) - 1):
+        if words[k] == "-m" and words[k + 1] == "pytest":
+            return True
+    return False
+
+
 def decide(p, resolution, project, home, temp):
     """`temp`: the temporary dirs ($temp); None: the usual ones."""
     pl = Places(project, home, temp_dirs(home) if temp is None else temp, p.trace, {}, {})
@@ -1038,6 +1080,8 @@ def decide(p, resolution, project, home, temp):
         if p.follow_links:
             for a in part.actions:
                 a.path = followed(a.path, a.verb)
+        if p.follow_links:
+            part.actions += machine_actions(p, part)
         for a in part.actions:
             # (written by an earlier command: as if by this one)
             plain = a.kind is None or a.kind == "script" or a.kind == "project-code"
@@ -1068,9 +1112,12 @@ def decide_action(p, pl, part, act):
         why = ""
         for m in rule.matches:
             w = match_rule(pl, m, part, act)
-            if w.ok and rule.decision == "allow" and m.item[0] == "program" and act.verb in FILE_VERBS:
+            hidden = act.verb == "run" and act.kind is not None
+            if w.ok and rule.decision == "allow" and m.item[0] == "program" and (act.verb in FILE_VERBS or hidden):
                 # (a program allowed by name: run; what it reads, writes and
-                # deletes the places' rules decide: gcc -E /flag, read x < f)
+                # deletes the places' rules decide: gcc -E /flag, read x < f;
+                # what it runs that vetter can't see, the rules about that:
+                # git's repository config naming core.fsmonitor)
                 why = w.why + ", allowed to run, not what it " + act.verb + "s" if pl.trace else ""
                 continue
             why = w.why

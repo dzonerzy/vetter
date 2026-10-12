@@ -259,6 +259,18 @@ def parse(args, spec):
             i += 1
             continue
         name, eq, val = s.partition("=")
+        if s.startswith("--") and len(name) > 2 and name not in spec.values and name not in spec.flags \
+                and name not in spec.roles:
+            # (GNU's getopt_long: a unique prefix names the option, --ev
+            # --eval; several: ambiguous, what it is only running tells)
+            found = long_prefix(spec, name)
+            if len(found) == 1:
+                name = found[0]
+                s = name + eq + val
+            elif len(found) > 1:
+                options.append(("--?" + name, Field([",".join(found)], False, False)))
+                i += 1
+                continue
         if name in spec.values and (s.startswith("--") or len(name) > 2 or eq == ""):
             # (--opt=value, --opt value, -opt value: go's single-dash long ones)
             if eq != "":
@@ -294,6 +306,113 @@ def parse(args, spec):
         if not consumed:
             i += 1
     return Parsed(options, operands, i)
+
+
+# cmake -D keys naming scripts it runs, programs it runs
+CMAKE_CODE = {"CMAKE_PROJECT_INCLUDE", "CMAKE_PROJECT_INCLUDE_BEFORE", "CMAKE_PROJECT_TOP_LEVEL_INCLUDES",
+              "CMAKE_TOOLCHAIN_FILE", "CMAKE_USER_MAKE_RULES_OVERRIDE", "CMAKE_USER_MAKE_RULES_OVERRIDE_C",
+              "CMAKE_USER_MAKE_RULES_OVERRIDE_CXX", "CMAKE_MODULE_PATH", "CMAKE_PREFIX_PATH"}
+CMAKE_PROGRAMS = {"CMAKE_C_COMPILER", "CMAKE_CXX_COMPILER", "CMAKE_LINKER", "CMAKE_AR", "CMAKE_RANLIB",
+                  "CMAKE_MAKE_PROGRAM", "CMAKE_ASM_COMPILER", "CMAKE_CUDA_COMPILER", "CMAKE_OBJCOPY"}
+
+
+# What the compiler driver hands on (-Xclang W, -Xpreprocessor W, -Wp,W,W...):
+# the words each program takes, by the option, and what their values are
+FORWARDED = {"-Xclang": "cc1", "-Xpreprocessor": "cpp", "-Xlinker": "ld", "-Xassembler": "as"}
+FORWARDED_COMMA = {"-Wp,": "cpp", "-Wl,": "ld", "-Wa,": "as"}
+FORWARDED_ROLES = {
+    "cc1": {"-load": "code_file", "-include": "read", "-imacros": "read", "-include-pch": "read",
+            "-fplugin": "code_file", "-fpass-plugin": "code_file"},
+    "cpp": {"-include": "read", "-imacros": "read", "-MF": "write", "-o": "write"},
+    "ld": {"-plugin": "code_file", "--plugin": "code_file", "-T": "read", "--script": "read", "-o": "write",
+           "--dependency-file": "write", "-Map": "write"},
+    "as": {"-o": "write"},
+}
+
+
+def forwarded(rt, w, e, ctx, options):
+    """The options gcc and clang hand on to the compiler proper, the
+    preprocessor, the linker, the assembler: put together in order and read
+    as theirs (-Xclang -load -Xclang p.so: a plugin loaded)."""
+    from ..shells.bash.resolve import unknown
+
+    words = {"cc1": [], "cpp": [], "ld": [], "as": []}
+    for name, value in options:
+        if name in FORWARDED:
+            if value is None or not field_known(value):
+                unknown(rt, w, str(name) + ": options handed on, only running tells", e.span, ctx, "code", [])
+                return
+            words[FORWARDED[name]].append(field_static(value))
+        else:
+            for pre in FORWARDED_COMMA:
+                if name.startswith(pre):
+                    words[FORWARDED_COMMA[pre]] += name[len(pre):].split(",")
+    for tool, ws in words.items():
+        roles = FORWARDED_ROLES[tool]
+        k = 0
+        while k < len(ws):
+            word = ws[k]
+            opt, eq, val = word.partition("=")
+            if word in roles:
+                if k + 1 >= len(ws):
+                    unknown(rt, w, word + ": handed on with no value", e.span, ctx, "code", [])
+                    return
+                role(rt, w, e, ctx, roles[word], Field([ws[k + 1]], False, False), word, EMPTY)
+                k += 2
+                continue
+            if eq != "" and opt in roles:
+                role(rt, w, e, ctx, roles[opt], Field([val], False, False), opt, EMPTY)
+            elif word.startswith("@"):
+                role(rt, w, e, ctx, "code_file", Field([word[1:]], False, False), word, EMPTY)
+            k += 1
+
+
+def go_package(rt, w, e, ctx, o):
+    """go run's package: a directory of code (./cmd/x), or a module's path
+    (example.com/x@v1: fetched and run)."""
+    from ..shells.bash.resolve import unknown
+
+    s = field_static(o)
+    if s is None:
+        unknown(rt, w, "go run: a package only running tells", e.span, ctx, "code", [])
+        return
+    head = s.split("/")[0]
+    if "@" in s or ("." in head and not s.startswith(".") and not s.startswith("/")):
+        unknown(rt, w, "go run " + s + ": fetches the module and runs it", e.span, ctx, "package", [])
+        return
+    unknown(rt, w, "go run: runs the code in " + s, e.span, ctx, "code_file", [o])
+
+
+def less_keys(rt, w, e, ctx, s):
+    """less +CMD (++CMD: for each file): the keys it runs first. Moving
+    (G, g, F, a line number, %), searching (/re, ?re): nothing more; !CMD
+    a shell command; any other key (|, v, s FILE, :e FILE...) only running
+    tells."""
+    from ..shells.bash.resolve import code, unknown
+
+    keys = s[2:] if s.startswith("++") else s[1:]
+    if keys.startswith("!"):
+        line, _, rest = keys[1:].partition("\n")
+        code(rt, w, line, ctx, e.span, "less +!", False, None)
+        if rest.strip() != "":
+            unknown(rt, w, "less +: keys after the command, only running tells", e.span, ctx, "code", [])
+        return
+    if (keys.startswith("/") or keys.startswith("?")) and "\n" not in keys.rstrip("\n"):
+        return
+    for c in keys:
+        if not (("0" <= c <= "9") or c in "gGFpP%"):
+            unknown(rt, w, "less +" + keys + ": keys that may run commands (!, |, v, s)", e.span, ctx, "code", [])
+            return
+
+
+def long_prefix(spec, given):
+    """The long options of the spec `given` is a prefix of."""
+    out = []
+    for group in (spec.values, spec.roles, spec.flags, spec.anywhere):
+        for o in group:
+            if o.startswith("--") and o.startswith(given) and o not in out:
+                out.append(o)
+    return out
 
 
 def operand_roles(spec, operands):
@@ -418,6 +537,8 @@ def apply_specs(rt, w, e, ctx):
                 break
         starts.append(a)
     apply_options(rt, w, e, ctx, spec, p.options, None, starts)
+    if len(spec.names) > 0 and spec.names[0] == "gcc":
+        forwarded(rt, w, e, ctx, p.options)
     if spec.subcommands and len(p.operands) > 0 and field_known(p.operands[0]):
         sub_name = field_static(p.operands[0])
         if sub_name in spec.sub:
@@ -484,9 +605,19 @@ def flag(rt, w, e, ctx, label, value, given):
 
 
 def apply_options(rt, w, e, ctx, spec, options, parent, starts):
-    from ..shells.bash.resolve import exec_name
+    from ..shells.bash.resolve import exec_name, unknown
 
     for name, value in options:
+        if name.startswith("--?"):
+            # (an abbreviation of several: one of them with a role, what it
+            # does only running tells)
+            candidates = field_static(value).split(",")
+            risky = [c for c in candidates if c in spec.roles and spec.roles[c] != "plain"] + \
+                    [c for c in candidates if c in spec.flags]
+            if len(risky) > 0:
+                unknown(rt, w, str(exec_name(e)) + " " + name[3:] + ": one of " + ", ".join(candidates)
+                        + ", as the program reads it", e.span, ctx, "code", [])
+            continue
         if name in spec.flags:
             flag(rt, w, e, ctx, str(exec_name(e)) + " " + name, spec.flags[name], starts)
         if name not in spec.roles or value is None:
@@ -525,6 +656,30 @@ def apply_operands(rt, w, e, ctx, spec, operands, parent):
         return
     if kind == "ln":
         link_operands(e, operands)
+        return
+    if kind == "go_run":
+        # (go run a.go b.go ARGS, go run PACKAGE ARGS: the code; a remote
+        # package's, downloaded)
+        files = False
+        for o in operands:
+            s = field_static(o)
+            if s is not None and s.endswith(".go"):
+                files = True
+                role(rt, w, e, ctx, "code_file", o, None, spec)
+                continue
+            if not files:
+                go_package(rt, w, e, ctx, o)
+            break
+        return
+    if kind == "less":
+        for o in operands:
+            s = field_static(o)
+            if s is not None and s.startswith("+"):
+                less_keys(rt, w, e, ctx, s)
+            elif s is None and field_text(o).startswith("+"):
+                unknown(rt, w, "less " + field_text(o) + ": keys only running tells", e.span, ctx, "code", [])
+            else:
+                e.roles.append(Role("read", o, None))
         return
     if kind == "make":
         for o in operands:
@@ -603,7 +758,11 @@ def role(rt, w, e, ctx, r, value, option, spec):
         else:
             unknown(rt, w, labelled(name, option) + ": runs a command only running tells", e.span, ctx, "code", [])
     elif r == "program":
-        if field_known(value):
+        if field_known(value) and option is not None and option in e.env:
+            # (RUSTC_WRAPPER=w: w run without it, or it would name w again)
+            env = {k: v for k, v in e.env.items() if k != option}
+            run(rt, w, [value], env, [], ctx, e.span, e.stdin, e.via + (labelled(name, option),))
+        elif field_known(value):
             inner(rt, w, e, [value], ctx, labelled(name, option), {})
         else:
             unknown(rt, w, labelled(name, option) + ": runs a program only running tells", e.span, ctx, "code", [])
@@ -695,6 +854,47 @@ def role(rt, w, e, ctx, r, value, option, spec):
             f = Field([field_static(value).partition("=")[0]], False, False)
         e.roles.append(Role("read", f, option))
         unknown(rt, w, joined(name, option) + ": loads the code in " + field_text(f), e.span, ctx, "code_file", [f])
+    elif r == "java_main":
+        # (java X.java: compiled and run; a class: from the class path)
+        s = field_static(value)
+        if s is None or s.endswith(".java"):
+            role(rt, w, e, ctx, "code_file", value, option, spec)
+    elif r == "classpath":
+        # (java -cp a:b, javac -processorpath: the classes run, each entry's)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": classes from where only running tells", e.span, ctx, "code", [])
+        else:
+            s = field_static(value)
+            for entry in (s.split(";") if ";" in s else s.split(":")):
+                if entry != "":
+                    f = Field([entry], False, False)
+                    unknown(rt, w, labelled(name, option) + ": runs the code in " + entry, e.span, ctx, "code_file", [f])
+    elif r == "cmake_define":
+        # (-DKEY[:TYPE]=VALUE: a script cmake includes, a program it runs)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": a setting only running tells", e.span, ctx, "configured", [])
+        else:
+            key, _, val = field_static(value).partition("=")
+            key = key.partition(":")[0].upper()
+            if key in CMAKE_CODE or (key.startswith("CMAKE_PROJECT_") and "INCLUDE" in key):
+                for f in val.split(";"):
+                    if f != "":
+                        unknown(rt, w, "cmake -D" + key + ": runs the code in " + f, e.span, ctx, "code_file",
+                                [Field([f], False, False)])
+            elif key.endswith("_COMPILER_LAUNCHER") or key.endswith("_LINKER_LAUNCHER") or key in CMAKE_PROGRAMS:
+                if val != "":
+                    role(rt, w, e, ctx, "program", Field([val.split(";")[0]], False, False), "-D" + key, spec)
+    elif r == "file_list":
+        # (tar -T, zstd --filelist, sort --files0-from: the list read, and
+        # the files in it, which only running tells)
+        e.roles.append(Role("read", value, option))
+        unknown(rt, w, labelled(name, option) + " " + field_text(value) + ": reads the files it lists", e.span, ctx,
+                "code", [])
+    elif r == "config_file":
+        # (curl -K: more options from the file, which only running tells)
+        e.roles.append(Role("read", value, option))
+        unknown(rt, w, labelled(name, option) + " " + field_text(value) + ": options read from it", e.span, ctx,
+                "configured", [])
     elif r == "configured":
         # (a setting that changes what it runs, its effect not followed)
         unknown(rt, w, labelled(name, option) + " " + field_text(value) + ": sets what it runs", e.span, ctx,
@@ -1086,6 +1286,36 @@ AWK_BEFORE_REGEX = ("", "(", ",", "{", "}", ";", "\n", "!", "~", "&&", "||", "="
                     "+", "-", "*", "%", "^", "?", ":", "print", "printf", "return", "in")
 
 
+AWK_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\x07", "b": "\x08", "f": "\x0c", "v": "\x0b"}
+
+
+def awk_escape(prog, j):
+    """The character a string's \\ escape at prog[j] (after the \\) is, as
+    awk reads it (\\057 /, \\x2f /, \\n), and where it ends."""
+    n = len(prog)
+    c = prog[j]
+    if "0" <= c <= "7":
+        k = j
+        v = 0
+        while k < n and k < j + 3 and "0" <= prog[k] <= "7":
+            v = v * 8 + (ord(prog[k]) - 48)
+            k += 1
+        return chr(v % 256), k
+    if c == "x":
+        k = j + 1
+        v = 0
+        while k < n and k < j + 3 and (("0" <= prog[k] <= "9") or ("a" <= prog[k].lower() <= "f")):
+            d = prog[k].lower()
+            v = v * 16 + (ord(d) - 48 if d <= "9" else ord(d) - 87)
+            k += 1
+        if k > j + 1:
+            return chr(v), k
+        return "x", j + 1
+    if c in AWK_ESCAPES:
+        return AWK_ESCAPES[c], j + 1
+    return c, j + 1
+
+
 def awk_tokens(prog):
     """An awk program's tokens: ("str", its text unescaped), ("id", name),
     ("num", text), ("op", text) (newlines among them: they end
@@ -1111,9 +1341,8 @@ def awk_tokens(prog):
             text = ""
             while j < n and prog[j] != '"':
                 if prog[j] == "\\" and j + 1 < n:
-                    nxt = prog[j + 1]
-                    text += "\n" if nxt == "n" else ("\t" if nxt == "t" else nxt)
-                    j += 2
+                    c2, j = awk_escape(prog, j + 1)
+                    text += c2
                 else:
                     text += prog[j]
                     j += 1
@@ -1245,6 +1474,9 @@ def awk_effects(prog):
                 j += 1
             if j < n and t[j][0] == "op" and t[j][1] in ("=", "+=", "-=", "++", "--"):
                 out.append(("read?", "ARGV changed: files it picks when it runs"))
+            elif text == "ARGV" and not (k + 1 < n and t[k + 1] == ("op", "[")):
+                # (ARGV whole, given to split() or delete: changed)
+                out.append(("read?", "ARGV changed: files it picks when it runs"))
     return out
 
 
@@ -1267,16 +1499,128 @@ def awk(rt, w, e, ctx, value):
             unknown(rt, w, name + ": " + why, e.span, ctx, "code", [])
 
 
+def split_words(s):
+    """A value split as a shell splits words, quotes kept together and
+    taken off (MAKEFLAGS, GOFLAGS...); None: a quote that doesn't close."""
+    out = []
+    cur = ""
+    started = False
+    i = 0
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c == "'" or c == '"':
+            j = s.find(c, i + 1)
+            if j < 0:
+                return None
+            cur += s[i + 1 : j]
+            started = True
+            i = j + 1
+            continue
+        if c == "\\" and i + 1 < n:
+            cur += s[i + 1]
+            started = True
+            i += 2
+            continue
+        if is_space(c):
+            if started:
+                out.append(cur)
+            cur = ""
+            started = False
+            i += 1
+            continue
+        cur += c
+        started = True
+        i += 1
+    if started:
+        out.append(cur)
+    return out
+
+
+def is_shell_name(s):
+    if s == "":
+        return False
+    for c in s:
+        if c in " \t\n|&;()<>$`'\"\\":
+            return False
+    return True
+
+
 def apply_env(rt, w, e, ctx):
-    from ..shells.bash.resolve import copy, exec_name, expanded_later, run, unknown
+    from ..shells.bash.resolve import code, copy, exec_name, expanded_later, run, unknown
 
     name = exec_name(e)
     who = name if name is not None and name != "" else "it"
     for var, value in e.env.items():
+        if var.startswith("BASH_FUNC_"):
+            # (BASH_FUNC_f%%='() { ...; }': a bash it starts defines f, run
+            # in place of the command f)
+            fname = var[10:]
+            if fname.endswith("%%"):
+                fname = fname[: len(fname) - 2]
+            elif fname.endswith("()"):
+                fname = fname[: len(fname) - 2]
+            if field_known(value) and is_shell_name(fname):
+                code(rt, w, fname + " " + field_static(value), copy(ctx), e.span, var, False, None)
+            else:
+                unknown(rt, w, var + ": a bash function only running tells", e.span, ctx, "code", [])
+            continue
         if var not in ENV:
             continue
         r = ENV[var]
         if r == "plain":
+            continue
+        if r.startswith("options:"):
+            # (MAKEFLAGS, GOFLAGS, JAVA_TOOL_OPTIONS: more options, read as
+            # the program's own, its roles theirs)
+            prog = r[8:]
+            if prog not in SPECS:
+                continue
+            if not field_known(value):
+                unknown(rt, w, var + ": " + prog + " options only running tells", e.span, ctx, "configured", [])
+                continue
+            words = split_words(field_static(value))
+            if words is None:
+                unknown(rt, w, var + ": " + prog + " options vetter can't split", e.span, ctx, "configured", [])
+                continue
+            if prog == "make":
+                # (MAKEFLAGS' first word may be flags with no dash: k, ks)
+                if len(words) > 0 and not words[0].startswith("-") and "=" not in words[0]:
+                    words[0] = "-" + words[0]
+            pspec = SPECS[prog]
+            if pspec.subcommands and name == prog:
+                # (GOFLAGS: the subcommand's options, go build's)
+                for a in e.argv[1:]:
+                    s = field_static(a)
+                    if s is not None and not s.startswith("-"):
+                        if s in pspec.sub:
+                            pspec = pspec.sub[s]
+                        break
+            p = parse([Field([x], False, False) for x in words], pspec)
+            vector_ctx = copy(ctx)
+            if var in vector_ctx.exported:
+                vector_ctx.exported.pop(var)
+            apply_options(rt, w, e, vector_ctx, pspec, p.options, None, [])
+            for o in p.operands:
+                s = field_static(o)
+                if prog == "make" and s is not None and "=" in s:
+                    mvar, _, mval = s.partition("=")
+                    make_variable(rt, w, e, vector_ctx, mvar, mval)
+                elif prog == "less" and s is not None and s.startswith("+"):
+                    # (LESS='+!cmd': keys less runs first)
+                    less_keys(rt, w, e, vector_ctx, s)
+                elif prog == "java":
+                    # (an operand in it: a class, its code)
+                    role(rt, w, e, vector_ctx, "code_file", o, var, pspec)
+            continue
+        if r == "code_file_list":
+            # (MAKEFILES: makefiles read first, their recipes run)
+            if not field_known(value):
+                unknown(rt, w, var + ": code files only running tells", e.span, ctx, "configured", [])
+                continue
+            for f in split_words(field_static(value)) or []:
+                unknown(rt, w, var + "=" + f + ": " + who + " runs the code in it", e.span, ctx, "env_code",
+                        [Field([f], False, False)])
             continue
         if r == "shell_expanded":
             # (a shell given it expands it again: PS4 before each traced

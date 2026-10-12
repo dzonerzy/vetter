@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import zgram
 
 from ... import paths
+from ...glob import match
 from ...specs import Role, strip
 from ..bash.expand import Dynamic, Field, Variables, field_known, field_static, field_text
 from ..bash.resolve import (
@@ -38,6 +39,9 @@ from .cmdlets import (
     COMMON_ALIASES,
     COMMON_PARAMS,
     DOWNLOADING,
+    FILE_BOTH,
+    FILE_READERS,
+    FILE_WRITERS,
     MAX_DEPTH,
     POWERSHELLS,
     PS_ALIASES,
@@ -69,12 +73,15 @@ class PW:
     source: str
     # (Set-Alias's: folded alias -> the command's name)
     aliases: dict
-    # ($PSDefaultParameterValues['Cmdlet:Param'] = v: folded key -> v)
+    # ($PSDefaultParameterValues['Cmdlet:Param'] = v: folded key -> v; "?":
+    # changed in a way only running tells)
     defaults: dict
+    # (Push-Location's: where Pop-Location goes back to)
+    locations: list
 
 
 def walker(r, home, depth):
-    return PW(r, W(r), home, depth, {}, {}, None, (), {}, "", {}, {})
+    return PW(r, W(r), home, depth, {}, {}, None, (), {}, "", {}, {}, [])
 
 
 @dataclass
@@ -174,6 +181,7 @@ def script(rt, pw, tree, cwd, via, source):
                 pw.by_command[cmd.start] = pw.r.executions[first]
         expression_redirects(rt, pw, stmt)
         effects(rt, pw, stmt)
+        method_effects(rt, pw, stmt)
         forget_changed(pw, stmt)
     for pipe in nodes_of(tree, "pipe", []):
         pipeline(rt, pw, pipe)
@@ -194,6 +202,41 @@ def expression_redirects(rt, pw, stmt):
         if red is not None:
             pw.r.executions.append(execution([Field(["("], False, False)], {}, [red], pw.cwd, span_of(pw, node), pw.via,
                                              None, "group"))
+
+
+def file_type(type_literal):
+    """"read", "write", "both": what an object of the type does to the
+    file it's made with; None: not such a type."""
+    t = fold(strip_chars(type_literal, "[]"))
+    if t.startswith("system."):
+        t = t[7:]
+    if t in FILE_READERS:
+        return "read"
+    if t in FILE_WRITERS:
+        return "write"
+    if t in FILE_BOTH:
+        return "both"
+    return None
+
+
+def file_object(rt, pw, node, does, invoke):
+    """[IO.StreamReader]::new(path): the file read (written: a writer's;
+    both: a FileStream's); a path only running tells, an Unknown."""
+    args = [k for k in invoke.children if k.rule == "expression"]
+    path = values.value(rt, pw, args[0]) if len(args) > 0 else None
+    if isinstance(path, list) and len(path) > 0:
+        path = path[0]
+    span = span_of(pw, node)
+    if not isinstance(path, str):
+        note(rt, pw, "a file object on a path only running tells: " + node.text, span, "code", [])
+        return
+    f = Field([path], False, False)
+    e = execution([Field(["("], False, False)], {}, [], pw.cwd, span, pw.via, None, "group")
+    if does == "read" or does == "both":
+        e.roles.append(Role("read", f, None))
+    if does == "write" or does == "both":
+        e.roles.append(Role("write", f, None))
+    pw.r.executions.append(e)
 
 
 def risky_type(type_literal):
@@ -219,6 +262,9 @@ def dotnet(rt, pw, tree):
                 bare = lstrip_chars(m.text, ".:")
                 method = fold(bare)
                 on = kids[0].text if kids[0].rule == "type_literal" and m.text.startswith("::") else None
+                if on is not None and method == "new" and file_type(on) is not None:
+                    file_object(rt, pw, node, file_type(on), kids[k + 1])
+                    continue
                 risky = on is not None and risky_type(on)
                 if method in RISKY_METHODS or risky:
                     what = on + "::" + bare if on is not None and on != "" else "." + bare + "()"
@@ -303,6 +349,22 @@ def effects(rt, pw, stmt):
     computed = None
     rhs = first_child(a, "statement")
     op = first_child(a, "assign_op")
+    if op is not None and op.text != "=":
+        # ($p += 'x': added to what it was, a string's, else forgotten)
+        if name is not None and is_plain_name(name):
+            old = pw.vars[name] if name in pw.vars else variable(pw, var.text)
+            added = values.value(rt, pw, rhs) if rhs is not None else None
+            if op.text == "+=" and old is not None and added is not None:
+                pw.vars[name] = values.binary("+", old, added)
+            else:
+                pw.vars[name] = None
+        elif name is not None and name.startswith("psdefaultparametervalues"):
+            pw.defaults["?"] = True
+        return
+    if name == "psdefaultparametervalues":
+        # (the whole table replaced: what's in it only running tells)
+        pw.defaults["?"] = True
+        return
     if value is None and rhs is not None and op is not None and op.text == "=":
         # (a value built from pieces: $a + '-Item', -join (...), ...)
         computed = values.value(rt, pw, rhs)
@@ -344,6 +406,37 @@ def env_value(rt, pw, assignment):
         else:
             parts.append(Dynamic(k, ""))
     return Field(parts, False, False)
+
+
+def method_effects(rt, pw, stmt):
+    """Calls that change what's after them: $PSDefaultParameterValues.Add(k,
+    v) (Remove, Clear...), ...SessionState.Path.SetLocation(p) (its
+    PushCurrentLocation, PopLocation)."""
+    for kind in ("postfix_expr", "postfix_expr_arg"):
+        for node in nodes_of(stmt, kind, []):
+            kids = node.children
+            for k in range(1, len(kids)):
+                m = kids[k]
+                if m.rule != "member" or k + 1 >= len(kids) or kids[k + 1].rule != "invoke":
+                    continue
+                method = fold(m.text.lstrip(".:"))
+                args = [values.value(rt, pw, x) for x in kids[k + 1].children if x.rule == "expression"]
+                if len(args) == 1 and isinstance(args[0], list):
+                    args = args[0]
+                receiver = fold(kids[0].text)
+                if receiver == "$psdefaultparametervalues" and k == 1:
+                    if method == "add" and len(args) == 2 and isinstance(args[0], str) \
+                            and isinstance(args[1], str):
+                        pw.defaults[fold(args[0])] = args[1]
+                    elif method == "remove" and len(args) == 1 and isinstance(args[0], str):
+                        pw.defaults.pop(fold(args[0]), None)
+                    elif method != "containskey" and method != "containsvalue" and method != "tostring":
+                        pw.defaults["?"] = True
+                elif method == "setlocation" or method == "pushcurrentlocation" or method == "poplocation":
+                    if method == "setlocation" and len(args) >= 1 and isinstance(args[0], str):
+                        pw.cwd = paths.join(pw.cwd, args[0]) if pw.cwd is not None else None
+                    else:
+                        pw.cwd = None
 
 
 def forget_changed(pw, stmt):
@@ -726,6 +819,19 @@ def variable(pw, text):
 # ----------------------------------------------------------------------
 
 
+def default_value(pw, cmdlet_name, param):
+    """$PSDefaultParameterValues' value for Cmdlet:Param (a key with
+    wildcards, *:Param, too), or None."""
+    want = fold(cmdlet_name) + ":" + fold(param)
+    if want in pw.defaults:
+        return pw.defaults[want]
+    for key, v in pw.defaults.items():
+        name, _, p = key.partition(":")
+        if ("*" in name or "?" in name or "*" in p) and match(fold(cmdlet_name), name) and match(fold(param), p):
+            return v
+    return None
+
+
 def downloads_in(f):
     """The downloading command a value only running tells comes from
     ((Invoke-WebRequest ...).Content, $(iwr ...)), or None."""
@@ -802,8 +908,34 @@ def cmdlet(rt, pw, c, words, reds, span):
             free.append(p)
     for k in range(min(len(free), len(positional))):
         bound.append(Bound(free[k], c.params[free[k]] if free[k] in c.params else None, positional[k]))
+    # ($PSDefaultParameterValues: what a parameter not given is)
+    named = [b.name for b in bound]
+    if "?" in pw.defaults:
+        note(rt, pw, c.name + ": default parameter values set in a way only running tells", span, "code", [])
+    for p in c.params:
+        if p not in named:
+            v = default_value(pw, c.name, p)
+            if v is not None:
+                bound.append(Bound(p, c.params[p], [Field([v], False, False)]))
+    if c.name == "Push-Location":
+        pw.locations.append(pw.cwd)
     e = Execution(argv, {}, reds, pw.cwd, span, pw.via, None, "program", [], [], True, c.readonly)
     pw.r.executions.append(e)
+    if c.name == "Pop-Location":
+        # (back where the last Push-Location was; none: only running tells)
+        pw.cwd = pw.locations.pop() if len(pw.locations) > 0 else None
+    if c.name == "New-Item":
+        kind = None
+        for b in bound:
+            if b.name == "ItemType" and len(b.vals) > 0 and field_known(b.vals[0]):
+                kind = fold(field_static(b.vals[0]))
+        if kind == "symboliclink" or kind == "junction" or kind == "hardlink":
+            # (a link: what's done through it is done to its target)
+            for b in bound:
+                if b.name == "Value" or b.name == "Target":
+                    for f in b.vals:
+                        e.roles.append(Role("read", f, "-" + b.name))
+                        e.roles.append(Role("write", f, "-" + b.name))
     if len(positional) > len(free) or (pending is not None and pending.role != "plain"):
         # (arguments vetter can't bind: what they are only running tells)
         note(rt, pw, c.name + ": arguments vetter can't bind to its parameters", span, "code", [])

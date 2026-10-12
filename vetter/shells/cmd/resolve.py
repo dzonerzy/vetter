@@ -27,8 +27,12 @@ INTERNAL = {"echo", "set", "cls", "title", "ver", "vol", "path", "prompt", "colo
 # here whichever shell starts them (simple() below)
 LAUNCHERS = {"cmd", "powershell", "pwsh", "conhost", "forfiles", "wmic", "schtasks", "at"}
 
-# (for /f's rounds a line is read for: its variables' values)
-MAX_ROUNDS = 8
+# (a for's rounds read, each with its values; past them: an Unknown)
+MAX_ROUNDS = 64
+
+# (a for variable whose values only running tells: put in the body as a
+# variable no cmd has, which reading it makes an Unknown)
+UNKNOWN_VALUE = "%__vetter_for_value__%"
 
 
 def default_env(home, cwd):
@@ -66,10 +70,12 @@ class CW:
     cwd: object
     vars: dict
     stdin_text: object
+    # (pushd's: where popd goes back to)
+    stack: list
 
 
 def walker(r, home, depth, via, delayed):
-    return CW(r, home, depth, via, delayed, W(r), None, {}, None)
+    return CW(r, home, depth, via, delayed, W(r), None, {}, None, [])
 
 
 def resolve(rt, command, cwd, home, depth, r, via, delayed, vars=None, stdin_text=None):
@@ -174,7 +180,8 @@ def for_values(n):
         end = int(numbers[2])
         out = []
         v = start
-        while step != 0 and (v <= end if step > 0 else v >= end) and len(out) < MAX_ROUNDS:
+        # (one round past the most read: for_command tells there are more)
+        while step != 0 and (v <= end if step > 0 else v >= end) and len(out) <= MAX_ROUNDS:
             out.append({var: str(v)})
             v += step
         return out
@@ -244,13 +251,17 @@ def for_values(n):
                 values[letter] = parts[w - 1] if w - 1 < len(parts) else ""
             letter = chr(ord(letter) + 1)
         return [values]
-    if len(opts) > 0:
-        return None
     words = for_words(items)
-    for w in words:
-        if "*" in w or "?" in w:
-            return None
-    return [{var: w} for w in words]
+    if "/r" in opts:
+        # (for /r [ROOT] %A in (SET): each SET under ROOT and every folder in
+        # it, ROOT\...\x: a pattern of where, which only running tells)
+        at = opts.index("/r")
+        root = strip_chars(n.options[at + 1], '"') if at + 1 < len(n.options) else "."
+        return [{var: root.rstrip("\\/") + "\\*\\" + strip_chars(x, '"')} for x in words]
+    if len(opts) > 0 and opts != ["/d"]:
+        return None
+    # (a pattern, *.txt: the files it matches, the pattern standing for them)
+    return [{var: x} for x in words]
 
 
 def command_output(text):
@@ -412,13 +423,22 @@ def for_command(rt, w, n):
             if "usebackq" in o:
                 usebackq = True
         quote = "`" if usebackq else "'"
+        text_quote = "'" if usebackq else '"'
         if items.startswith(quote) and items.endswith(quote) and len(items) > 1:
             # (for /f ... in ('command'): it runs)
             code(rt, w, items[1 : len(items) - 1], n.span, "for /f", None)
+        elif not (items.startswith(text_quote) and items.endswith(text_quote) and len(items) > 1):
+            # (for /f ... in (FILE...): each file read, its lines the values)
+            e = execution([Field(["("], False, False)], {}, [], w.cwd, n.span, w.via, None, "group")
+            for f in for_words(items):
+                e.roles.append(Role("read", Field([strip_chars(f, '"')], False, False), None))
+            w.r.executions.append(e)
+    if strip(n.body_text) == "":
+        return
     rounds = for_values(n)
-    if rounds is not None and strip(n.body_text) != "":
+    texts = []
+    if rounds is not None:
         # (the values known: the body read with each, as cmd runs it)
-        texts = []
         for values in rounds[:MAX_ROUNDS]:
             text = n.body_text
             for var, v in values.items():
@@ -429,11 +449,61 @@ def for_command(rt, w, n):
                 texts = None
                 break
             texts.append(text)
-        if texts is not None:
-            for text in texts:
-                code(rt, w, text, n.span, "for", None)
-            return
-    node(rt, w, n.body)
+        if len(rounds) > MAX_ROUNDS:
+            note(rt, w, "for: more rounds than vetter reads (" + str(MAX_ROUNDS) + "): what the rest do, only running tells",
+                 n.span, "code")
+    if rounds is None or texts is None:
+        # (values only running tells: each variable one no cmd has, the
+        # body's use of it an Unknown)
+        text = n.body_text
+        for var in for_variables(n):
+            text = unknown_for(text, var)
+        texts = [text]
+    for text in texts:
+        code(rt, w, text, n.span, "for", None)
+
+
+def for_variables(n):
+    """The variables a for sets: its own, and for /f tokens=1,2 the next
+    letters."""
+    var = lstrip_pct(n.variable)
+    out = [var]
+    opts = [fold(o) for o in n.options]
+    if "/f" in opts and len(var) == 1:
+        spec = tokens_spec(fold(" ".join(n.options)))
+        count = 0
+        for piece in spec.split(","):
+            a, _, b = piece.rstrip("*").partition("-")
+            if is_number(a, False) and b != "" and is_number(b, False):
+                count += int(b) - int(a) + 1
+            else:
+                count += 1
+        for k in range(1, min(count + 1, 26)):
+            c = chr(ord(var) + k)
+            if c.isalpha():
+                out.append(c)
+    return out
+
+
+def unknown_for(text, var):
+    """%VAR and %~xxVAR in text made UNKNOWN_VALUE."""
+    out = ""
+    i = 0
+    n = len(text)
+    while i < n:
+        if text[i] == "%":
+            j = i + 1
+            if j < n and text[j] == "~":
+                j += 1
+                while j < n and text[j] in "fdpnxsatz" and text[j : j + len(var)] != var:
+                    j += 1
+            if text[j : j + len(var)] == var:
+                out += UNKNOWN_VALUE
+                i = j + len(var)
+                continue
+        out += text[i]
+        i += 1
+    return out
 
 
 def for_substitute(text, var, value, cwd):
@@ -673,11 +743,47 @@ def split_args(s):
     return out
 
 
+# Each internal command's switches (/Q, /S:...): the letters it takes; any
+# other /word is a path (cd /, cd /Windows)
+SWITCHES = {"cd": "d", "chdir": "d", "pushd": "", "del": "pfsqa", "erase": "pfsqa", "rd": "sq", "rmdir": "sq",
+            "copy": "abvydnzl-", "move": "y-", "md": "", "mkdir": "", "type": "", "dir": "abcdlnopqrstwx4-",
+            "ren": "", "rename": ""}
+
+
+def is_switch(low, word):
+    if not word.startswith("/") or len(word) < 2:
+        return False
+    letters = SWITCHES[low] if low in SWITCHES else None
+    if letters is None:
+        return True
+    return word[1].lower() in letters and (len(word) == 2 or word[2] == ":" or word[1] == "-"
+                                            or (low in ("dir", "del", "erase") and word[1].lower() in "ao"))
+
+
+def drive_rooted(cwd, x):
+    """\\x or /x, rooted at the current drive (C:\\x); others as they are."""
+    if (x.startswith("\\") or x.startswith("/")) and not x.startswith("\\\\") and cwd is not None and len(cwd) >= 2 \
+            and cwd[1] == ":":
+        return cwd[:2] + "\\" + x[1:]
+    return x
+
+
 def internal(rt, w, low, name, args, reds, span):
     words = split_args(args)
     argv = [Field([low], False, False)] + [Field([x], False, False) for x in words]
     e = Execution(argv, {}, reds, w.cwd, span, w.via, None, "program", [], [], True, low == "type" or low == "dir")
-    operands = [x for x in words if not x.startswith("/")]
+    operands = [x for x in words if not is_switch(low, x)]
+    if low == "copy":
+        # (a+b: sources joined, glued or not)
+        joined = []
+        for x in operands:
+            joined += [p for p in x.split("+") if p != ""] if x != "+" else ["+"]
+        operands = joined
+    if low == "cd" or low == "chdir" or low == "pushd" or low == "type" or low == "del" or low == "erase" \
+            or low == "rd" or low == "rmdir" or low == "copy" or low == "move" or low == "md" or low == "mkdir" \
+            or low == "dir" or low == "ren" or low == "rename":
+        # (\x, /x: the current drive's root)
+        operands = [drive_rooted(w.cwd, x) for x in operands]
     if low == "del" or low == "erase" or low == "rd" or low == "rmdir":
         for x in operands:
             e.roles.append(Role("delete", Field([x], False, False), None))
@@ -701,9 +807,15 @@ def internal(rt, w, low, name, args, reds, span):
         for x in operands:
             e.roles.append(Role("read", Field([x], False, False), None))
     w.r.executions.append(e)
-    if low == "cd" or low == "chdir" or low == "pushd":
+    if low == "pushd":
+        w.stack.append(w.cwd)
+    if low == "popd":
+        # (back where the last pushd was; none to go back to: as it is)
+        if len(w.stack) > 0:
+            w.cwd = w.stack.pop()
+    elif low == "cd" or low == "chdir" or low == "pushd":
         if len(operands) > 0:
-            w.cwd = paths.join(w.cwd, " ".join(operands))
+            w.cwd = paths.join(w.cwd, " ".join(operands)) if w.cwd is not None else None
     elif low == "set":
         set_command(w, args)
     elif low == "call":

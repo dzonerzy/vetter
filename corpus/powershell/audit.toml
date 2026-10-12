@@ -1,0 +1,88 @@
+# The analyzer audit of 2026-10-12 (docs/11-analyzer-remediation.md):
+# PowerShell's proofs, by finding id. Each was allowed by the stock policy.
+
+[[case]]
+id = "audit-P01-reflection-delegate"
+shell = "powershell"
+command = '''$m=[Diagnostics.Process].GetMethod('Start',[type[]]@([string],[string]))
+$d=$m.CreateDelegate([Func[string,string,Diagnostics.Process]])
+$p=$d.DynamicInvoke('cmd.exe','/c type C:\flag')
+$p.WaitForExit()'''
+runs = ["cmd.exe"]
+expect = "ask"
+why = "Process.Start reached through reflection and a delegate"
+source = "audit"
+
+[[case]]
+id = "audit-P02-junction"
+shell = "powershell"
+command = '''New-Item -ItemType Junction -Path root -Target 'C:\'; Get-Content root\flag'''
+runs = ["New-Item", "Get-Content"]
+expect = "ask"
+why = "root is C:\\ through the junction"
+source = "audit"
+
+[[case]]
+id = "audit-P03-defaults-add-process"
+shell = "powershell"
+command = '''$PSDefaultParameterValues.Add('Start-Process:FilePath','cmd.exe')
+$PSDefaultParameterValues.Add('Start-Process:ArgumentList','/c type C:\flag')
+Start-Process -Wait -NoNewWindow'''
+runs = ["Start-Process", "cmd.exe"]
+expect = "ask"
+why = "Start-Process's parameters given by the defaults"
+source = "audit"
+
+[[case]]
+id = "audit-P03-defaults-add-read"
+shell = "powershell"
+command = '''$PSDefaultParameterValues.Add('Get-Content:Path','C:\flag'); Get-Content'''
+runs = ["Get-Content"]
+expect = "ask"
+why = "Get-Content's -Path given by the defaults"
+source = "audit"
+
+[[case]]
+id = "audit-P04-streamreader"
+shell = "powershell"
+command = '''([IO.StreamReader]::new('C:\flag')).ReadToEnd()'''
+runs = []
+expect = "ask"
+why = "a StreamReader reads its file"
+source = "audit"
+
+[[case]]
+id = "audit-P05-streamwriter"
+shell = "powershell"
+command = '''$w=[IO.StreamWriter]::new($PROFILE);$w.WriteLine('payload');$w.Close()'''
+runs = []
+expect = "deny"
+why = "a StreamWriter writes the profile"
+source = "audit"
+
+[[case]]
+id = "audit-P06-plus-equals"
+shell = "powershell"
+command = '''$p='C:\';$p+='flag';Get-Content $p'''
+runs = ["Get-Content"]
+expect = "ask"
+why = "+= appends: $p is C:\\flag"
+source = "audit"
+
+[[case]]
+id = "audit-P07-pop-location"
+shell = "powershell"
+command = '''Set-Location 'C:\'; Push-Location 'C:\Users\user\project'; Pop-Location; Get-Content flag'''
+runs = ["Set-Location", "Push-Location", "Pop-Location", "Get-Content"]
+expect = "ask"
+why = "Pop-Location goes back to C:\\"
+source = "audit"
+
+[[case]]
+id = "audit-P08-sessionstate-setlocation"
+shell = "powershell"
+command = '''$ExecutionContext.SessionState.Path.SetLocation('C:\'); Get-Content flag'''
+runs = ["Get-Content"]
+expect = "ask"
+why = "SetLocation moves to C:\\"
+source = "audit"

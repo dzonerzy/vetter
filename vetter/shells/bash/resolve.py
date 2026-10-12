@@ -56,7 +56,7 @@ BUILTINS = {
 CODE_BUILTINS = {"eval", "source", ".", "exec", "command", "builtin", "coproc"}
 
 # Variables bash expands again where it uses them (expanded_later)
-EXPANDED_LATER = {"PS4"}
+EXPANDED_LATER = {"PS0", "PS1", "PS2", "PS3", "PS4"}
 
 WRAPPERS = {"env", "command", "builtin", "exec", "sudo", "doas", "nice", "nohup", "setsid", "stdbuf", "time",
             "timeout", "chroot", "ionice", "taskset", "chrt", "flock", "unbuffer", "xargs", "find", "watch", "su",
@@ -482,6 +482,7 @@ def substitutions(rt, w,node, ctx):
             arithmetic_node(rt, w, k, ctx, 2, 1)
         elif k.rule == "param":
             param_arithmetic(rt, w, k, ctx)
+            prompt_transform(rt, w, k, ctx)
 
 
 def substitution(rt, w,node, ctx):
@@ -659,13 +660,33 @@ def named_subscript(rt, w, ctx, span, f):
         k += 1
     if k == 0 or k >= len(t) or t[k] != "[":
         return
-    name = t[:k]
-    if name in ctx.vars.attrs and ctx.vars.attrs[name] == "A":
-        return
+    # (an associative array's too: bash 5.1 expands its key again here)
     end = arith.closing(t, k, len(t))
     inside = t[k + 1 : end]
     if inside != "@" and inside != "*":
         arithmetic(rt, w, ctx, span, a, k + 1, end, True)
+
+
+def prompt_transform(rt, w, node, ctx):
+    """${x@P}: x's value expanded as a prompt string, its substitutions
+    run (read as a here-document's body is)."""
+    t = node.text
+    if not (t.startswith("${") and t.endswith("@P}")):
+        return
+    body = t[2 : len(t) - 3]
+    span = node_span(ctx, node)
+    if not is_name(body) and not (len(body) > 0 and body.isdigit()):
+        unknown(rt, w, "${" + body + "@P}: a prompt string only running tells", span, ctx, "code", [])
+        return
+    v = var_get(ctx.vars, body) if is_name(body) else UNKNOWN
+    if isinstance(v, list):
+        v = " ".join(v)
+    if isinstance(v, str):
+        if "$" in v or "`" in v:
+            code(rt, w, ": <<__vetter_prompt__\n" + v + "\n__vetter_prompt__\n", ctx, span, "${" + body + "@P}", False,
+                 None)
+    elif v is not None:
+        unknown(rt, w, "${" + body + "@P}: a prompt string only running tells, expanded", span, ctx, "code", [])
 
 
 def param_arithmetic(rt, w, node, ctx):
@@ -1110,7 +1131,13 @@ def builtin_effects(rt, w,e, ctx):
         if len(ops) == 0:
             ctx.cwd = ctx.home
         elif field_known(ops[0]) and field_static(ops[0]) != "-":
-            ctx.cwd = paths.join(ctx.cwd, field_static(ops[0]))
+            target = field_static(ops[0])
+            if cdpath_matters(e, ctx, target):
+                # (CDPATH=/ cd etc: /etc if it's there; which, only running
+                # tells)
+                ctx.cwd = None
+            else:
+                ctx.cwd = paths.join(ctx.cwd, target)
         else:
             ctx.cwd = None
     elif name == "popd":
@@ -1244,6 +1271,29 @@ def builtin_effects(rt, w,e, ctx):
             unknown(rt, w,name + " runs a script only running tells", e.span, ctx, "code", [])
         unknown_all(ctx)
         ctx.cwd = None
+
+
+def cdpath_matters(e, ctx, target):
+    """Whether cd TARGET may go elsewhere than cwd/TARGET: a CDPATH the
+    command sets (on cd, or before) naming a directory other than ., and a
+    relative TARGET not starting with ./ or ../"""
+    if target.startswith("/") or target == "." or target == ".." or target.startswith("./") \
+            or target.startswith("../"):
+        return False
+    v = None
+    if "CDPATH" in e.env:
+        f = e.env["CDPATH"]
+        v = field_static(f) if field_known(f) else UNKNOWN
+    elif "CDPATH" in ctx.vars.values:
+        v = ctx.vars.values["CDPATH"]
+    if v is None:
+        return False
+    if not isinstance(v, str):
+        return True
+    for entry in v.split(":"):
+        if entry != "" and entry != ".":
+            return True
+    return False
 
 
 def trap_action(rt, w, e, ctx, args):
@@ -1603,7 +1653,9 @@ def wrap_env(rt, w,e, ctx):
         elif s == "--":
             i += 1
             break
-        elif "=" in s and not s.startswith("-") and is_name(s.partition("=")[0]):
+        elif "=" in s and not s.startswith("-") and s.partition("=")[0] != "":
+            # (any NAME=VALUE before the command: env sets it, a name bash
+            # can't write too, BASH_FUNC_f%%)
             n, _, v = s.partition("=")
             env[n] = Field([v], False, False)
             i += 1

@@ -127,14 +127,15 @@ values = ["--files0-from"]
 operands = "read"
 readonly = true
 [spec.roles]
-"--files0-from" = "read"
+"--files0-from" = "file_list"
 
 [[spec]]
 name = ["less"]
 values = ["-b", "--buffers", "-h", "--max-back-scroll", "-j", "--jump-target", "-k", "--lesskey-file", "-o",
           "--log-file", "-O", "--LOG-FILE", "-p", "--pattern", "-P", "--prompt", "-t", "--tag", "-T", "--tag-file",
           "-x", "--tabs", "-y", "--max-forw-scroll", "-z", "--window", "-#", "--shift"]
-operands = "read"
+# (files read; +CMD: keys less runs first, +! a shell command)
+operands = "less"
 readonly = true
 [spec.roles]
 "-o" = "write"
@@ -165,7 +166,7 @@ readonly = true
 "-T" = "write"
 "--temporary-directory" = "write"
 "--compress-program" = "program"
-"--files0-from" = "read"
+"--files0-from" = "file_list"
 "--random-source" = "read"
 
 [[spec]]
@@ -224,8 +225,8 @@ values = ["-f", "--files-from", "-m", "--magic-file", "-F", "--separator", "-e",
 operands = "read"
 readonly = true
 [spec.roles]
-"-f" = "read"
-"--files-from" = "read"
+"-f" = "file_list"
+"--files-from" = "file_list"
 "-m" = "read"
 "--magic-file" = "read"
 
@@ -386,7 +387,7 @@ readonly = true
 [spec.roles]
 "-X" = "read"
 "--exclude-from" = "read"
-"--files0-from" = "read"
+"--files0-from" = "file_list"
 
 [[spec]]
 name = ["df"]
@@ -470,8 +471,8 @@ operands = "plain"
 [spec.roles]
 "-C" = "cwd"
 "--directory" = "cwd"
-"-T" = "read"
-"--files-from" = "read"
+"-T" = "file_list"
+"--files-from" = "file_list"
 "-I" = "cmdline"
 "--use-compress-program" = "cmdline"
 "--to-command" = "shell"
@@ -497,7 +498,7 @@ operands = "read"
 [spec.roles]
 "-o" = "write"
 "-D" = "read"
-"--filelist" = "read"
+"--filelist" = "file_list"
 "--output-dir-flat" = "write"
 "--output-dir-mirror" = "write"
 

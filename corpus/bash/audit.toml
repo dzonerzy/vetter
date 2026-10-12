@@ -1,0 +1,309 @@
+# The analyzer audit of 2026-10-12 (docs/11-analyzer-remediation.md): each
+# proof, by its finding's id. Each was allowed by the stock policy; what it
+# does must be in the resolution, or an Unknown.
+
+[[case]]
+id = "audit-B01-bash-func-env"
+shell = "bash"
+command = "env 'BASH_FUNC_true%%=() { cat /flag; }' bash -c true"
+runs = ["env", "bash", "cat"]
+expect = "ask"
+why = "bash imports the function from the environment; true runs it"
+source = "audit"
+
+[[case]]
+id = "audit-B02-prompt-transform"
+shell = "bash"
+command = "x='$(cat /flag)'; echo \"${x@P}\""
+runs = ["echo", "cat"]
+expect = "ask"
+why = "${x@P} expands the value as a prompt: its $(...) runs"
+source = "audit"
+
+[[case]]
+id = "audit-B03-assoc-subscript"
+shell = "bash"
+command = "declare -A h; k='$(cat /flag >&2)'; [[ -v h[$k] ]] || :"
+runs = ["declare", "cat"]
+expect = "ask"
+why = "bash 5.1 expands an associative subscript again in [[ -v ]]"
+source = "audit"
+
+[[case]]
+id = "audit-B04-ps0"
+shell = "bash"
+command = "PS0='$(cat /flag)' bash --noprofile --norc -i <<< true"
+runs = ["bash", "cat"]
+expect = "ask"
+why = "an interactive bash expands PS0 before each command"
+source = "audit"
+
+[[case]]
+id = "audit-B04-ps1"
+shell = "bash"
+command = "PS1='$(cat /flag)' bash --noprofile --norc -i <<< true"
+runs = ["bash", "cat"]
+expect = "ask"
+why = "an interactive bash expands PS1 for each prompt"
+source = "audit"
+
+[[case]]
+id = "audit-B05-less-bang"
+shell = "bash"
+command = "TERM=xterm less -X $'+!cat /flag;pkill -x less\\n' /etc/os-release"
+runs = ["less", "cat"]
+expect = "ask"
+why = "less's +! initial command runs a shell command"
+source = "audit"
+
+[[case]]
+id = "audit-B06-make-eval-prefix"
+shell = "bash"
+command = "make --ev='x:;cat</flag' x"
+runs = ["make", "cat"]
+expect = "ask"
+why = "--ev is --eval: GNU options are taken by a unique prefix"
+source = "audit"
+
+[[case]]
+id = "audit-B07-zip-unzip-command-prefix"
+shell = "bash"
+command = "zip -T --unzip-c='sh -c \"cat /flag\"' /tmp/a.zip"
+runs = ["zip", "sh", "cat"]
+expect = "ask"
+why = "--unzip-c is --unzip-command, run to test the archive"
+source = "audit"
+
+[[case]]
+id = "audit-B08-cdpath"
+shell = "bash"
+command = "CDPATH=/ cd etc && cat hostname"
+runs = ["cd", "cat"]
+expect = "ask"
+why = "with CDPATH, cd etc goes to /etc: cat reads /etc/hostname"
+source = "audit"
+
+[[case]]
+id = "audit-B09-awk-split-argv"
+shell = "bash"
+command = "awk 'BEGIN{split(\"/flag\",ARGV)} {print}' README.md"
+runs = ["awk"]
+expect = "ask"
+why = "split into ARGV: the files awk reads are its program's"
+source = "audit"
+
+[[case]]
+id = "audit-B10-awk-octal-escape"
+shell = "bash"
+command = "awk 'BEGIN{getline x < \"\\057flag\"; print x}'"
+runs = ["awk"]
+expect = "ask"
+why = "\\057 is /: getline reads /flag"
+source = "audit"
+
+[[case]]
+id = "audit-B11-curl-config"
+shell = "bash"
+command = "printf 'url = \"file:///flag\"\\n' >/tmp/c && curl -sK /tmp/c"
+runs = ["printf", "curl"]
+expect = "ask"
+why = "curl reads more options from its config: a file URL, uploads, outputs"
+source = "audit"
+
+[[case]]
+id = "audit-B12-tar-files-from"
+shell = "bash"
+command = "printf '/flag\\n' >/tmp/l && tar --create --file=/tmp/a.tar --files-from=/tmp/l"
+runs = ["printf", "tar"]
+expect = "ask"
+why = "tar archives the files listed in /tmp/l"
+source = "audit"
+
+[[case]]
+id = "audit-B13-zstd-filelist"
+shell = "bash"
+command = "printf '/flag\\n' >/tmp/l && zstd -q -c --filelist=/tmp/l >/tmp/a.zst"
+runs = ["printf", "zstd"]
+expect = "ask"
+why = "zstd compresses the files listed in /tmp/l"
+source = "audit"
+
+[[case]]
+id = "audit-B14-sort-files0-from"
+shell = "bash"
+command = "printf '/flag\\0' >/tmp/l && sort --files0-from=/tmp/l"
+runs = ["printf", "sort"]
+expect = "ask"
+why = "sort reads the files listed in /tmp/l"
+source = "audit"
+
+[[case]]
+id = "audit-B15-file-files-from-prefix"
+shell = "bash"
+command = "file --files-f=/flag"
+runs = ["file"]
+expect = "ask"
+why = "--files-f is --files-from"
+source = "audit"
+
+[[case]]
+id = "audit-T01-ninja-stdin-manifest"
+shell = "bash"
+command = "ninja -f /dev/stdin <<'NINJA'\nrule leak\n  command = cat /flag\nbuild leak: leak\nNINJA"
+runs = ["ninja", "cat"]
+expect = "ask"
+why = "the manifest's rules are commands ninja runs"
+source = "audit"
+
+[[case]]
+id = "audit-T02-go-run-external"
+shell = "bash"
+command = "go run /tmp/x.go"
+runs = ["go"]
+expect = "ask"
+why = "go run builds and runs code from outside the project"
+source = "audit"
+
+[[case]]
+id = "audit-T03-java-source-mode"
+shell = "bash"
+command = "java /tmp/X.java"
+runs = ["java"]
+expect = "ask"
+why = "java runs a source file directly"
+source = "audit"
+
+[[case]]
+id = "audit-T04-makeflags-eval"
+shell = "bash"
+command = "MAKEFLAGS='--eval=x:;cat</flag' make x"
+runs = ["make", "cat"]
+expect = "ask"
+why = "make reads MAKEFLAGS as more options"
+source = "audit"
+
+[[case]]
+id = "audit-T05-compiler-path"
+shell = "bash"
+command = "COMPILER_PATH=/tmp gcc -c -x c /dev/null"
+runs = ["gcc"]
+expect = "ask"
+why = "gcc runs cc1 from COMPILER_PATH"
+source = "audit"
+
+[[case]]
+id = "audit-T06-rustc-workspace-wrapper"
+shell = "bash"
+command = "RUSTC_WORKSPACE_WRAPPER=/tmp/w cargo check"
+runs = ["cargo"]
+expect = "ask"
+why = "cargo runs rustc through the wrapper"
+source = "audit"
+
+[[case]]
+id = "audit-T07-makefiles-env"
+shell = "bash"
+command = "printf 'x:\\n\\tcat /flag\\n' >/tmp/x.mk && MAKEFILES=/tmp/x.mk make x"
+runs = ["printf", "make"]
+expect = "ask"
+why = "make reads the makefiles MAKEFILES names first"
+source = "audit"
+
+[[case]]
+id = "audit-T08-cmake-project-include"
+shell = "bash"
+command = "cmake -S . -B /tmp/b -DCMAKE_PROJECT_INCLUDE=/tmp/inject.cmake"
+runs = ["cmake"]
+expect = "ask"
+why = "CMAKE_PROJECT_INCLUDE is a script cmake runs"
+source = "audit"
+
+[[case]]
+id = "audit-T09-clang-xclang-load"
+shell = "bash"
+command = "clang -Xclang -load -Xclang /tmp/p.so -c /tmp/x.c"
+runs = ["clang"]
+expect = "ask"
+why = "-Xclang -load loads a plugin into the compiler"
+source = "audit"
+
+[[case]]
+id = "audit-T10-javac-then-java-cp"
+shell = "bash"
+command = "javac -d /tmp/classes /tmp/X.java && java -cp /tmp/classes X"
+runs = ["javac", "java"]
+expect = "ask"
+why = "java runs classes from outside the project"
+source = "audit"
+
+[[case]]
+id = "audit-T11-gradle-init-script"
+shell = "bash"
+command = "gradle -I /tmp/init.gradle help"
+runs = ["gradle"]
+expect = "ask"
+why = "an init script is code gradle runs first"
+source = "audit"
+
+[[case]]
+id = "audit-T12-zig-run-external"
+shell = "bash"
+command = "zig run /tmp/x.zig"
+runs = ["zig"]
+expect = "ask"
+why = "zig run builds and runs code from outside the project"
+source = "audit"
+
+[[case]]
+id = "audit-T14-cargo-manifest-path"
+shell = "bash"
+command = "cargo run --manifest-path /tmp/p/Cargo.toml"
+runs = ["cargo"]
+expect = "ask"
+why = "the crate built and run is outside the project"
+source = "audit"
+
+[[case]]
+id = "audit-T15-goflags-toolexec"
+shell = "bash"
+command = "GOFLAGS='-toolexec=/tmp/w' go build ./..."
+runs = ["go"]
+expect = "ask"
+why = "go reads GOFLAGS as more options: -toolexec runs a program"
+source = "audit"
+
+[[case]]
+id = "audit-T16-java-tool-options"
+shell = "bash"
+command = "JAVA_TOOL_OPTIONS=-agentpath:/tmp/a.so java -version || :"
+runs = ["java"]
+expect = "ask"
+why = "the JVM loads the agent JAVA_TOOL_OPTIONS names"
+source = "audit"
+
+[[case]]
+id = "audit-T17-pythonuserbase"
+shell = "bash"
+command = "PYTHONUSERBASE=/tmp/u python -c pass"
+runs = ["python"]
+expect = "ask"
+why = "python imports usercustomize from the user site there"
+source = "audit"
+
+[[case]]
+id = "audit-T18-ripgrep-config"
+shell = "bash"
+command = "RIPGREP_CONFIG_PATH=/tmp/rg.conf rg needle ."
+runs = ["rg"]
+expect = "ask"
+why = "rg reads its options from the config: --pre runs a program"
+source = "audit"
+
+[[case]]
+id = "audit-T20-gcc-xpreprocessor-include"
+shell = "bash"
+command = "gcc -E -x c - -Xpreprocessor -include -Xpreprocessor /flag <<< ''"
+runs = ["gcc"]
+expect = "ask"
+why = "the preprocessor is given -include /flag: it reads it"
+source = "audit"

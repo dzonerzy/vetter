@@ -252,6 +252,31 @@ def test_what_earlier_commands_wrote(program, policy, own_home):
                                         ["generated", CWD + "/evil"]]
 
 
+def test_what_this_machine_says(program, policy, own_home):
+    """Deciding here: a repository's own config naming a program git runs
+    (core.fsmonitor), a conftest.py the agent wrote that pytest imports"""
+    repo = own_home / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".git" / "config").write_text("[core]\n\tfsmonitor = /tmp/w\n")
+    clean = own_home / "clean"
+    (clean / ".git").mkdir(parents=True)
+    (clean / ".git" / "config").write_text("[core]\n\tbare = false\n\tfsmonitor = true\n")
+    for mode in ("python", "compiled"):
+        out = json.loads(answer(program, "claude", json.dumps(claude_req("git status", cwd=str(repo))), policy, mode))
+        assert decision(out) == "ask" and "core.fsmonitor" in out["hookSpecificOutput"]["permissionDecisionReason"]
+        out = json.loads(answer(program, "claude", json.dumps(claude_req("git status", cwd=str(clean))), policy, mode))
+        assert decision(out) == "allow"
+    state = own_home / ".local" / "state" / "vetter" / "written.tsv"
+    for mode in ("python", "compiled"):
+        if state.exists():
+            state.unlink()
+        assert answer(program, "claude", json.dumps({"tool_name": "Write", "tool_input": {
+            "file_path": CWD + "/tests/conftest.py"}, "cwd": CWD}), policy, mode).strip() == ""
+        for command in ("pytest -q", "python3 -m pytest tests"):
+            out = json.loads(answer(program, "claude", json.dumps(claude_req(command)), policy, mode))
+            assert decision(out) == "ask" and "conftest.py" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+
 BAD_POLICY = "policy t\nlog off\nuse stock\ndeny read in buld, $proj\n"
 BAD_REASON = ("bad.vet:4:14: buld isn't a place or a list (let buld = ...): did you mean build?\n"
               "bad.vet:4:20: $proj isn't one of vetter's places ($home, $project, $temp): did you mean $project?")

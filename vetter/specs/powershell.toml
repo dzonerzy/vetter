@@ -64,7 +64,9 @@ positional = ["Path"]
 Path = "write"
 Name = "plain"
 ItemType = "plain"
+# (a link's target with -ItemType SymbolicLink, Junction, HardLink)
 Value = "plain"
+Target = "plain"
 Force = "flag"
 
 [[cmdlet]]
@@ -195,6 +197,17 @@ aliases = ["pushd"]
 positional = ["Path"]
 [cmdlet.params]
 Path = "cwd"
+LiteralPath = "cwd"
+StackName = "plain"
+PassThru = "flag"
+
+[[cmdlet]]
+name = "Pop-Location"
+aliases = ["popd"]
+positional = []
+[cmdlet.params]
+StackName = "plain"
+PassThru = "flag"
 
 [[cmdlet]]
 name = "Invoke-WebRequest"

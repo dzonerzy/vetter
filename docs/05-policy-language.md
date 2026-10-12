@@ -110,8 +110,9 @@ user read; without one, the rule's text is the reason.
 An `allow` naming a program (or a group of them) allows running it; what it
 reads, writes and deletes is still decided by the rules about places:
 `allow gcc` doesn't allow `gcc -E /flag` reading /flag, `allow builtin`
-doesn't allow `read x < /flag`. A `deny` or `ask` naming a program covers
-all it does.
+doesn't allow `read x < /flag`; nor what it runs that vetter can't see
+(`run configured`: git's repository config naming `core.fsmonitor`). A
+`deny` or `ask` naming a program covers all it does.
 
 Places:
 

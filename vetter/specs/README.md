@@ -56,10 +56,25 @@ values = ["--output"]
 | `rustc_codegen` | `-C key=value` | `linker=`: an execution of it |
 | `agent_file` | a Java agent, `-javaagent:x.jar` | an Unknown |
 | `configured` | something that changes what runs later (cargo `--config`) | an Unknown (`run configured`) |
+| `file_list` | a file listing files it reads (`tar -T`, `sort --files0-from`) | the list read; the files in it an Unknown |
+| `config_file` | a file of more options (`curl -K`) | read; what it sets an Unknown (`run configured`) |
+| `classpath` | a class path (`java -cp a:b`) | each entry's code an Unknown |
+| `cmake_define` | `-DKEY=VALUE` | a script key (`CMAKE_PROJECT_INCLUDE`): code; a compiler or launcher: a program |
+| `java_main` | java's main class, or a `.java` source | a source: code |
 | `plain` | nothing vetter needs | — |
 
 `operands` is a role for all operands, or a list for each in order where
 `ROLE*` takes the rest but the ones after it (`["read*", "write"]`: cp).
+A long option is also matched by a unique prefix of it (GNU's getopt_long:
+`make --ev` is `--eval`); a prefix of several, one of them with a role, is an
+Unknown.
+
+The environment's roles (`env.toml`) are these, and `options:PROGRAM` (more
+options, read with that program's spec: `MAKEFLAGS`, `GOFLAGS`,
+`JAVA_TOOL_OPTIONS`), `code_file_list` (`MAKEFILES`), `shell_expanded` (a
+value a shell expands again: `PS0`-`PS4`); `BASH_FUNC_f%%` defines a bash
+function.
+
 `program_args` is a command to run (the wrapper's). `ln`: each link written,
 what it points to read and written too (what's done through it is done to
 it). `make`: targets, and `VAR=value` (`SHELL=`, a value with shell code: an

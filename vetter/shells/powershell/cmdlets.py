@@ -87,4 +87,12 @@ RISKY_METHODS = {
     "createinstance", "invokemember", "getdelegateforfunctionpointer", "setvalue", "createsubkey", "deletesubkey",
     "deletesubkeytree", "deletevalue", "setenvironmentvariable", "shellexecute", "run", "exec", "createobject",
     "invokescript", "newscriptblock", "expandstring", "invokeasync",
+    # (reflection and delegates: a method reached by its name, any of them)
+    "getmethod", "getmethods", "getmember", "getmembers", "getconstructor", "getconstructors", "createdelegate",
+    "dynamicinvoke", "getruntimemethod", "getruntimemethods", "gettype",
 }
+
+# Types whose objects read or write the file they're made with: [T]::new(path)
+FILE_READERS = ("io.streamreader", "io.binaryreader")
+FILE_WRITERS = ("io.streamwriter", "io.binarywriter")
+FILE_BOTH = ("io.filestream",)

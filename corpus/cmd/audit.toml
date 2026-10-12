@@ -1,0 +1,65 @@
+# The analyzer audit of 2026-10-12 (docs/11-analyzer-remediation.md):
+# cmd.exe's proofs, by finding id. Each was allowed by the stock policy.
+
+[[case]]
+id = "audit-C01-for-f-file-set"
+shell = "cmd"
+command = '''for /f "usebackq delims=" %A in ("C:\flag") do @echo %A'''
+runs = ["for", "echo"]
+expect = "ask"
+why = "for /f reads the file's lines"
+source = "audit"
+
+[[case]]
+id = "audit-C02-for-r-root"
+shell = "cmd"
+command = '''for /r C:\ %A in (flag) do @type %A'''
+runs = ["for", "type"]
+expect = "ask"
+why = "for /r walks C:\\: %A is a path under it"
+source = "audit"
+
+[[case]]
+id = "audit-C03-for-past-rounds"
+shell = "cmd"
+command = '''for %A in (README.md x x x x x x x x C:\flag) do @type %A'''
+runs = ["for", "type"]
+expect = "ask"
+why = "the tenth round reads C:\\flag"
+source = "audit"
+
+[[case]]
+id = "audit-C04-cd-slash-root"
+shell = "cmd"
+command = '''cd / & type flag'''
+runs = ["cd", "type"]
+expect = "ask"
+why = "cd / goes to the drive's root"
+source = "audit"
+
+[[case]]
+id = "audit-C04-cd-slash-windows"
+shell = "cmd"
+command = '''cd /Windows & type win.ini'''
+runs = ["cd", "type"]
+expect = "ask"
+why = "/Windows is a path, not a switch"
+source = "audit"
+
+[[case]]
+id = "audit-C05-copy-glued-plus"
+shell = "cmd"
+command = '''copy /b NUL+C:\flag %TEMP%\f & type %TEMP%\f'''
+runs = ["copy", "type"]
+expect = "ask"
+why = "NUL+C:\\flag: copy's sources joined"
+source = "audit"
+
+[[case]]
+id = "audit-C06-popd"
+shell = "cmd"
+command = '''cd /d C:\ & pushd %CD% & popd & type flag'''
+runs = ["cd", "pushd", "popd", "type"]
+expect = "ask"
+why = "popd goes back to C:\\"
+source = "audit"

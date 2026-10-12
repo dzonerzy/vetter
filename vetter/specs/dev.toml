@@ -19,6 +19,8 @@ single_dash_long = true
 [spec.sub.run]
 values = ["-exec", "-toolexec", "-tags", "-ldflags", "-gcflags", "-overlay", "-modfile", "-C"]
 single_dash_long = true
+# (its .go files or package: the code run)
+operands = "go_run"
 [spec.sub.run.roles]
 "-exec" = "cmdline"
 "-toolexec" = "cmdline"
@@ -110,13 +112,15 @@ operands = "program_args"
 [[spec]]
 name = ["cargo"]
 subcommands = true
-[spec.anywhere]
-"--config" = "configured"
-"-Z" = "configured"
 commands = ["add", "bench", "build", "b", "check", "c", "clean", "clippy", "doc", "d", "fetch", "fix", "fmt",
             "generate-lockfile", "help", "info", "init", "install", "locate-project", "login", "logout", "metadata",
             "new", "owner", "package", "pkgid", "publish", "remove", "report", "run", "r", "rustc", "rustdoc",
             "search", "test", "t", "tree", "uninstall", "update", "vendor", "verify-project", "version", "yank"]
+[spec.anywhere]
+"--config" = "configured"
+"-Z" = "configured"
+# (the crate built, its build.rs and what runs: the manifest's)
+"--manifest-path" = "code_file"
 [spec.sub.install]
 values = ["--git", "--path", "--root", "--version", "--branch", "--tag", "--rev", "--registry", "--index"]
 operands = "package"
