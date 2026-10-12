@@ -29,6 +29,10 @@ def pytest_addoption(parser):
     # asked for, and kept in .pytest_cache for the same sources)
     parser.addoption("--build", action="store_true",
                      help="build the standalone hook and libvetter, and test them")
+    # (running the corpus for real takes a minute or more, and bubblewrap,
+    # strace, or Windows from WSL: only asked for)
+    parser.addoption("--oracle", action="store_true",
+                     help="run the corpus and its variants for real (tools/oracle): Linux, and Windows from WSL")
 
 
 def pytest_configure(config):

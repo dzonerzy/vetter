@@ -45,12 +45,15 @@ vetter/                  the package: zrun's strict subset of Python (docs/10-na
   policy/                policy.zgram, language.py, actions.py, checks.py (lint), trace.py; builtin/
   agents/                hook.py (9 agents), log.py (secrets masked), install.py, importing.py
 corpus/                  the bypass corpus (bash/, powershell/, cmd/, harmless/)
-tests/                   pytest, each part in both of zrun's modes, against golden/ (recorded answers)
+tests/                   pytest, each part in both of zrun's modes, against golden/ (recorded answers);
+                         --build: the standalone hook and libvetter; --oracle: tools/oracle, run for real
 tools/                   run from here: python -m tools.<dir>.<tool>
   corpus/                check the corpus; the resolver and the policy on it
   bash/                  differential testing and fuzzing against bash 5.2
   powershell/            PowerShell's own parser as the reference: pwshdiff, pwshfuzz, probe
-  compare/               the corpus through tree-sitter-bash and dcg
+  compare/               the corpus through tree-sitter-bash; dcg and cc-safety-net as hooks (guards.py)
+  oracle/                commands run for real: Linux in bubblewrap under strace, cmd and PowerShell
+                         on Windows (from WSL); their variants (mutate.py, winmutate.py)
 docs/                    the design
 ```
 

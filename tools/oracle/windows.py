@@ -213,12 +213,14 @@ def mutate(places, verbose, every):
     return 1 if bypasses else 0
 
 
-def main():
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
     places = Places()
     places.setup()
-    if "--mutate" in sys.argv[1:]:
+    if "--mutate" in argv:
         try:
-            return mutate(places, "-v" in sys.argv[1:], "--all" in sys.argv[1:])
+            return mutate(places, "-v" in argv, "--all" in argv)
         finally:
             places.clean()
     wrong = 0
