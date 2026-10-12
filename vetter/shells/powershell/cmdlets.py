@@ -90,7 +90,17 @@ RISKY_METHODS = {
     # (reflection and delegates: a method reached by its name, any of them)
     "getmethod", "getmethods", "getmember", "getmembers", "getconstructor", "getconstructors", "createdelegate",
     "dynamicinvoke", "getruntimemethod", "getruntimemethods", "gettype",
+    # (WMI's methods: Win32_Process.Create; an assembly run; a file mapped)
+    "invokemethod", "executeassembly", "executeassemblybyname", "createinstanceandunwrap", "createinstancefrom",
+    "createinstancefromandunwrap", "createfromfile", "openexisting", "createviewstream", "createviewaccessor",
+    "compileassemblyfromsource", "compileassemblyfromfile", "definedynamicassembly", "putinstance",
 }
+# Types whose mere use gets what vetter can't follow: a cast to them
+# ([wmiclass]'Win32_Process'), a static member ([AppDomain]::CurrentDomain)
+CAPABLE_TYPES = ("appdomain", "wmiclass", "wmi", "wmisearcher", "management.", "io.memorymappedfiles.",
+                 "io.pipes.", "reflection.", "activator", "runtime.interopservices", "codedom.", "microsoft.csharp.",
+                 "microsoft.management.infrastructure.", "ciminstance", "cimsession", "xml.xsl.", "threading.thread",
+                 "diagnostics.process", "management.automation.powershell", "management.automation.runspaces.")
 
 # Types whose objects read or write the file they're made with: [T]::new(path)
 FILE_READERS = ("io.streamreader", "io.binaryreader")

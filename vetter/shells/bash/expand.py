@@ -49,10 +49,15 @@ class Variables:
     # (declare's: "i" an integer, its values evaluated as arithmetic; "A"
     # an associative array)
     attrs: dict = field(default_factory=dict)
+    # (declare -n r=x: r -> "x", and x -> "*"; "?" a target only running
+    # tells. Both read as unknown from then on: what's set through one is
+    # the other's)
+    refs: dict = field(default_factory=dict)
 
 
 def var_copy(variables):
-    return Variables({k: v for k, v in variables.values.items()}, {k: v for k, v in variables.attrs.items()})
+    return Variables({k: v for k, v in variables.values.items()}, {k: v for k, v in variables.attrs.items()},
+                     {k: v for k, v in variables.refs.items()})
 
 
 def var_forget(variables, names):
@@ -73,6 +78,8 @@ def changed_since(variables, before):
 
 
 def var_get(variables, name):
+    if name in variables.refs:
+        return UNKNOWN
     if name in variables.values:
         return variables.values[name]
     if name == "IFS":

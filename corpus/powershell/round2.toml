@@ -1,0 +1,129 @@
+# The bypass audit's second round (docs/12-analyzer-bypass-round2.md):
+# PowerShell's proofs. Each was allowed by the stock policy at 2c358af.
+
+[[case]]
+id = "r2-P01-noexit-stdin"
+shell = "bash"
+command = "printf 'Get-Content C:\\flag\\nexit\\n' | powershell -NoProfile -NoExit -Command 'Write-Output ok'"
+runs = ["printf", "powershell"]
+expect = "ask"
+why = "-NoExit reads more commands from its stdin"
+source = "audit"
+
+[[case]]
+id = "r2-P02-named-stacks"
+shell = "powershell"
+command = '''Set-Location 'C:\'
+Push-Location 'C:\Users\user\project' -StackName A
+Push-Location 'C:\Users\user\project' -StackName B
+Pop-Location -StackName A
+Get-Content flag'''
+runs = ["Get-Content"]
+expect = "ask"
+why = "stack A pops back to C:\\"
+source = "audit"
+
+[[case]]
+id = "r2-P03-defaults-alias"
+shell = "powershell"
+command = '''$d=$PSDefaultParameterValues
+$d.Add('Get-Content:Path','C:\flag')
+Get-Content'''
+runs = ["Get-Content"]
+expect = "ask"
+why = "$d is the same table"
+source = "audit"
+
+[[case]]
+id = "r2-P04-wmi-create"
+shell = "powershell"
+command = '''$p=[wmiclass]'Win32_Process'
+$p.InvokeMethod('Create',@('cmd.exe /c type C:\flag > C:\Users\user\project\o',$null,$null))
+Get-Content .\o'''
+runs = ["cmd.exe"]
+expect = "ask"
+why = "Win32_Process.Create starts a process"
+source = "audit"
+
+[[case]]
+id = "r2-P05-execute-assembly"
+shell = "powershell"
+command = '''$d=[AppDomain]::CurrentDomain
+$d.ExecuteAssembly('C:\path\payload.exe')'''
+runs = []
+expect = "ask"
+why = "ExecuteAssembly runs the assembly"
+source = "audit"
+
+[[case]]
+id = "r2-P06-memory-mapped"
+shell = "powershell"
+command = '''$m=[IO.MemoryMappedFiles.MemoryMappedFile]::CreateFromFile('C:\flag',[IO.FileMode]::Open,'x',0,[IO.MemoryMappedFiles.MemoryMappedFileAccess]::Read)
+$s=$m.CreateViewStream()
+while(($b=$s.ReadByte()) -ne -1){[Console]::Write([char]$b)}'''
+runs = []
+expect = "ask"
+why = "a memory-mapped file reads C:\\flag"
+source = "audit"
+
+[[case]]
+id = "r2x-ps-command-dash"
+shell = "powershell"
+command = '''"Get-Content C:\flag" | powershell -Command -'''
+runs = ["powershell", "Get-Content"]
+expect = "ask"
+why = "-Command -: its commands on its stdin"
+source = "derived"
+
+[[case]]
+id = "r2x-ps-pipe-cmd-k"
+shell = "powershell"
+command = '''"type C:\flag" | cmd /k echo hi'''
+runs = ["cmd", "type"]
+expect = "ask"
+why = "cmd /k reads more commands from the pipe"
+source = "derived"
+
+[[case]]
+id = "r2x-ps-set-location-stack"
+shell = "powershell"
+command = '''Set-Location 'C:\'
+Push-Location 'C:\Users\user\project' -StackName A
+Set-Location -StackName A
+Pop-Location
+Get-Content flag'''
+runs = ["Get-Content"]
+expect = "ask"
+why = "A is the default stack: Pop-Location pops it, back to C:\\"
+source = "derived"
+
+[[case]]
+id = "r2x-ps-get-variable"
+shell = "powershell"
+command = '''$d=(Get-Variable ('PSDefault'+'ParameterValues')).Value
+$d.Add('Get-Content:Path','C:\flag')
+Get-Content'''
+runs = ["Get-Content"]
+expect = "ask"
+why = "the table, reached by its name built"
+source = "derived"
+
+[[case]]
+id = "r2x-ps-default-dynamic"
+shell = "powershell"
+command = '''$v='C:\fl'+'ag'
+$PSDefaultParameterValues['Get-Content:Path'] = $v
+Get-Content'''
+runs = ["Get-Content"]
+expect = "ask"
+why = "a default built: C:\\flag"
+source = "derived"
+
+[[case]]
+id = "r2x-ps-cim"
+shell = "powershell"
+command = '''Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine='cmd /c type C:\flag'}'''
+runs = ["Invoke-CimMethod"]
+expect = "ask"
+why = "WMI starts the process"
+source = "derived"

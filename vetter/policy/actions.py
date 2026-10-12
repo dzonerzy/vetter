@@ -5,6 +5,7 @@ paths), network / download / send (hosts)."""
 from dataclasses import dataclass
 
 from .. import paths
+from ..paths import fold
 from ..shells.bash.expand import Dynamic, field_known, field_static, field_text
 from ..shells.bash.resolve import exec_name
 from ..specs import SPECS, parse
@@ -124,7 +125,54 @@ def parts(resolution, home):
     for u in resolution.unknowns:
         out.append(unknown_part(u))
     generated(out)
+    extracted(out)
     return out
+
+
+def looked_up(p):
+    """The files a command name may be found as before PATH's (cmd's
+    current folder)."""
+    if p.unknown:
+        return []
+    out = []
+    for r in p.what.roles:
+        if r.role == "lookup":
+            f = absolute(p.what.cwd, r.value)
+            if f is not None:
+                out.append(f)
+    return out
+
+
+def extracted(parts):
+    """What's below where an archive was extracted, later in the command,
+    may be a link it made (proc/self/root: /): a file there is one only
+    running tells; what runs from there, not the project's own."""
+    roots = []
+    for p in parts:
+        if len(roots) > 0:
+            for a in p.actions:
+                if a.path is None or not below_any(a.path, roots):
+                    continue
+                if a.verb == "run":
+                    if a.kind is None or a.kind == "script" or a.kind == "project-code":
+                        a.kind = "generated"
+                elif a.verb == "read" or a.verb == "write" or a.verb == "delete":
+                    a.text = a.text + " (below what an archive extracted: maybe through a link it made)"
+                    a.path = None
+        if p.unknown:
+            continue
+        for r in p.what.roles:
+            if r.role == "extract":
+                root = absolute(p.what.cwd, r.value)
+                roots.append(root if root is not None else "")
+
+
+def below_any(path, roots):
+    for r in roots:
+        # ("": a root only running tells, anywhere)
+        if r == "" or path.startswith(r.rstrip("/") + "/"):
+            return True
+    return False
 
 
 def generated(parts):
@@ -144,12 +192,56 @@ def generated(parts):
     if len(written) == 0:
         return
     written += built
+    folded = [fold(f) for f in written]
+    for p in parts:
+        for found in looked_up(p):
+            # (git after writing git.cmd where cmd looks first: that runs)
+            if fold(found) in folded:
+                p.actions.append(Action("run", found, None, "generated", "cmd finds " + found + " first"))
     for p in parts:
         for a in p.actions:
             # (downloaded, injected, ...: what's worse about it kept)
             plain = a.kind is None or a.kind == "script" or a.kind == "project-code"
             if a.verb == "run" and plain and a.path is not None and a.path in written:
                 a.kind = "generated"
+            elif a.verb == "run" and a.kind == "project-code" and a.path is not None:
+                # (make -C d after writing d/Makefile: what it runs, written)
+                for f in written:
+                    if defines(f, a.path):
+                        a.kind = "generated"
+
+
+# The files that say what a tool on a folder runs: its build's, its tests',
+# its package's scripts, the repository's config and hooks
+DEFINITIONS = {"Makefile", "makefile", "GNUmakefile", "build.ninja", "CMakeLists.txt", "CMakePresets.json",
+               "CMakeUserPresets.json", "conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini",
+               "setup.py", "package.json", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs", "Cargo.toml",
+               "build.rs", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
+               "gradle.properties", "pom.xml", "build.zig", "build.zig.zon", "go.mod", "go.work", "Dockerfile",
+               "Containerfile", "Rakefile", "Gemfile", "noxfile.py", "Justfile", "justfile", "Taskfile.yml"}
+# (in these folders, any file: .cargo/config.toml, .git/config, .git/hooks/*)
+DEFINITION_DIRS = ("/.git/", "/.cargo/", "/.mvn/", "/.gradle/", "/.husky/")
+
+
+def defines(path, folder):
+    """Is the file one that says what a tool on the folder runs: in the
+    folder or below it, or above it (a workspace's, the repository's)?"""
+    parent, _, leaf = path.rpartition("/")
+    special = False
+    for d in DEFINITION_DIRS:
+        if d in path + "/" and d not in folder + "/":
+            special = True
+    if leaf not in DEFINITIONS and not special:
+        return False
+    here = folder.rstrip("/") + "/"
+    if path.startswith(here):
+        return True
+    top = parent
+    for d in DEFINITION_DIRS:
+        k = (path + "/").find(d)
+        if k >= 0 and k < len(top):
+            top = path[:k]
+    return here.startswith(top.rstrip("/") + "/")
 
 
 # Programs that write what they build from the project's sources

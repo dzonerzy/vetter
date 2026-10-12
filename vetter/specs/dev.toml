@@ -44,9 +44,19 @@ operands = "package"
 [[spec]]
 name = ["npm", "pnpm", "yarn", "bun"]
 subcommands = true
+# (options before the subcommand taking a value)
+values = ["--prefix", "--dir", "--cwd", "-C", "--userconfig", "--globalconfig", "--script-shell", "--node-options",
+          "-w", "--workspace", "--filter", "--registry", "--cache", "--loglevel"]
 [spec.anywhere]
+"-C" = "project"
 "--script-shell" = "program"
 "--node-options" = "configured"
+# (the package it works on, its scripts: --prefix's, pnpm -C's, yarn --cwd's)
+"--prefix" = "project"
+"--dir" = "project"
+"--cwd" = "project"
+"--userconfig" = "configured"
+"--globalconfig" = "configured"
 [spec.sub.exec]
 operands = "package"
 [spec.sub.x]
@@ -58,13 +68,25 @@ operands = "package_script"
 [spec.sub.run-script]
 operands = "package_script"
 [spec.sub.start]
-operands = "package_script"
+[spec.sub.start.flags]
+"start" = {reason = "runs the package's start script", kind = "package_script"}
 [spec.sub.test]
-operands = "package_script"
+[spec.sub.test.flags]
+"test" = {reason = "runs the package's test script", kind = "package_script"}
+[spec.sub.t]
+[spec.sub.t.flags]
+"t" = {reason = "runs the package's test script", kind = "package_script"}
+[spec.sub.restart]
+[spec.sub.restart.flags]
+"restart" = {reason = "runs the package's restart scripts", kind = "package_script"}
 [spec.sub.install]
 operands = "package"
+[spec.sub.install.flags]
+"install" = {reason = "runs the package's install scripts", kind = "package_script"}
 [spec.sub.i]
 operands = "package"
+[spec.sub.i.flags]
+"i" = {reason = "runs the package's install scripts", kind = "package_script"}
 [spec.sub.add]
 operands = "package"
 [spec.sub.ci]
@@ -120,7 +142,7 @@ commands = ["add", "bench", "build", "b", "check", "c", "clean", "clippy", "doc"
 "--config" = "configured"
 "-Z" = "configured"
 # (the crate built, its build.rs and what runs: the manifest's)
-"--manifest-path" = "code_file"
+"--manifest-path" = "project_file"
 [spec.sub.install]
 values = ["--git", "--path", "--root", "--version", "--branch", "--tag", "--rev", "--registry", "--index"]
 operands = "package"

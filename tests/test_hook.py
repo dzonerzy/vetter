@@ -230,6 +230,10 @@ WRITE_THEN_RUN = [
     ({"tool_name": "Edit", "tool_input": {"file_path": CWD + "/evil.c"}, "cwd": CWD}, None, ""),
     (claude_req("gcc evil.c -o evil"), "allow", ""),
     (claude_req("./evil"), "ask", "running what the agent wrote"),
+    # (a Makefile the agent wrote: what make runs in its folder, the agent's)
+    ({"tool_name": "Write", "tool_input": {"file_path": "lib/Makefile", "content": "x"}, "cwd": CWD}, None, ""),
+    (claude_req("make -C lib"), "ask", "running what the agent wrote"),
+    (claude_req("make -C src"), "allow", ""),
 ]
 
 
@@ -249,7 +253,7 @@ def test_what_earlier_commands_wrote(program, policy, own_home):
             assert decision(out) == want and why in out["hookSpecificOutput"]["permissionDecisionReason"], (mode, request)
         assert remembered(own_home) == [["generated", CWD + "/x.sh"], ["generated", CWD + "/y.sh"],
                                         ["downloaded", CWD + "/tool"], ["generated", CWD + "/evil.c"],
-                                        ["generated", CWD + "/evil"]]
+                                        ["generated", CWD + "/evil"], ["generated", CWD + "/lib/Makefile"]]
 
 
 def test_what_this_machine_says(program, policy, own_home):
@@ -397,7 +401,8 @@ def test_standalone_remembers(executable, policy, own_home):
             continue
         out = json.loads(text)
         assert decision(out) == want and why in out["hookSpecificOutput"]["permissionDecisionReason"], request
-    assert [k for k, _ in remembered(own_home)] == ["generated", "generated", "downloaded", "generated", "generated"]
+    assert [k for k, _ in remembered(own_home)] == ["generated", "generated", "downloaded", "generated", "generated",
+                                                    "generated"]
 
 
 def test_library(executable, policy, pytestconfig):

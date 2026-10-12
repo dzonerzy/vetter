@@ -15,6 +15,7 @@ import zgram
 
 from ... import paths
 from ...glob import match
+from ...specs import DOWNLOADERS as BASH_DOWNLOADERS
 from ...specs import Role, strip
 from ..bash.expand import Dynamic, Field, Variables, field_known, field_static, field_text
 from ..bash.resolve import (
@@ -47,6 +48,7 @@ from .cmdlets import (
     PS_ALIASES,
     PS_OPTIONS,
     PS_VALUED,
+    CAPABLE_TYPES,
     RISKY_METHODS,
     RISKY_TYPES,
 )
@@ -76,12 +78,16 @@ class PW:
     # ($PSDefaultParameterValues['Cmdlet:Param'] = v: folded key -> v; "?":
     # changed in a way only running tells)
     defaults: dict
-    # (Push-Location's: where Pop-Location goes back to)
-    locations: list
+    # (Push-Location's, by the stack's name (folded; "" the default):
+    # where Pop-Location goes back to)
+    locations: dict
+    # (the stack Push-Location and Pop-Location use: Set-Location
+    # -StackName's; "?": one only running tells)
+    stack: str = ""
 
 
 def walker(r, home, depth):
-    return PW(r, W(r), home, depth, {}, {}, None, (), {}, "", {}, {}, [])
+    return PW(r, W(r), home, depth, {}, {}, None, (), {}, "", {}, {}, {})
 
 
 @dataclass
@@ -182,6 +188,7 @@ def script(rt, pw, tree, cwd, via, source):
         expression_redirects(rt, pw, stmt)
         effects(rt, pw, stmt)
         method_effects(rt, pw, stmt)
+        defaults_reached(pw, stmt)
         forget_changed(pw, stmt)
     for pipe in nodes_of(tree, "pipe", []):
         pipeline(rt, pw, pipe)
@@ -249,9 +256,22 @@ def risky_type(type_literal):
     return False
 
 
+def capable_type(type_literal):
+    t = fold(strip_chars(type_literal, "[]"))
+    if t.startswith("system."):
+        t = t[7:]
+    for r in CAPABLE_TYPES:
+        if t == r or (r.endswith(".") and t.startswith(r)):
+            return True
+    return False
+
+
 def dotnet(rt, pw, tree):
     """.NET calls that do what a command would: what vetter can't follow,
-    an Unknown."""
+    an Unknown. A type that gets such objects, used at all: one too."""
+    for node in nodes_of(tree, "type_literal", []):
+        if capable_type(node.text):
+            note(rt, pw, "a .NET type vetter doesn't follow: " + node.text, span_of(pw, node), "code", [])
     for kind in ("postfix_expr", "postfix_expr_arg", "lvalue"):
         for node in nodes_of(tree, kind, []):
             kids = node.children
@@ -269,6 +289,29 @@ def dotnet(rt, pw, tree):
                 if method in RISKY_METHODS or risky:
                     what = on + "::" + bare if on is not None and on != "" else "." + bare + "()"
                     note(rt, pw, "a .NET call vetter doesn't follow: " + what, span_of(pw, node), "code", [])
+
+
+def piped_shell(rt, pw, e, span):
+    """powershell -NoExit, cmd /k, given a pipe: the commands in it run
+    too."""
+    from ..cmd.resolve import cmd_stdin, reads_stdin
+    from ..cmd.resolve import walker as cmd_walker
+
+    if len(e.argv) == 0 or not field_known(e.argv[0]):
+        return
+    base = fold(paths.program_name(field_static(e.argv[0])))
+    if base.endswith(".exe"):
+        base = base[: len(base) - 4]
+    if base in POWERSHELLS and ps_reads_stdin(e.argv[1:]):
+        ps_stdin(rt, pw, e, span)
+    elif base == "cmd" and len([a for a in e.argv[1:] if not field_known(a)]) == 0:
+        if reads_stdin(" ".join([field_static(a) for a in e.argv[1:]])):
+            cw = cmd_walker(pw.r, pw.home, pw.depth + 1, pw.via, False)
+            cw.cwd = pw.cwd
+            cw.piped = True
+            cw.stdin_text = e.stdin.text
+            cw.piped_from = e.stdin.producer
+            cmd_stdin(rt, cw, span, False)
 
 
 def pipeline(rt, pw, pipe):
@@ -298,6 +341,7 @@ def pipeline(rt, pw, pipe):
                         if exec_name(e0) in DOWNLOADING:
                             producer = e0
         e.stdin = Stdin(text, producer)
+        piped_shell(rt, pw, e, span_of(pw, cur))
         pwsh = False
         for r in e.roles:
             if r.role == "pwsh":
@@ -370,12 +414,15 @@ def effects(rt, pw, stmt):
         computed = values.value(rt, pw, rhs)
         if isinstance(computed, str):
             value = computed
-    if name is not None and name.startswith("psdefaultparametervalues[") and value is not None:
+    if name is not None and name.startswith("psdefaultparametervalues["):
         # ($PSDefaultParameterValues['Set-Alias:Name'] = 'x': what a
-        # cmdlet's parameter is when it isn't given)
+        # cmdlet's parameter is when it isn't given; a key or value only
+        # running tells: any)
         key = default_key(var)
-        if key is not None:
+        if key is not None and value is not None:
             pw.defaults[key] = value
+        else:
+            pw.defaults["?"] = True
         return
     if name is not None and name != "" and name.startswith("env:"):
         pw.env[fold_upper(name[4:])] = Field([value], False, False) if value is not None else env_value(rt, pw, a)
@@ -437,6 +484,54 @@ def method_effects(rt, pw, stmt):
                         pw.cwd = paths.join(pw.cwd, args[0]) if pw.cwd is not None else None
                     else:
                         pw.cwd = None
+
+
+# (the variable cmdlets and their aliases: a variable by its name)
+VARIABLE_CMDLETS = {"get-variable", "gv", "set-variable", "sv", "set", "new-variable", "nv", "remove-variable", "rv",
+                    "clear-variable", "clv"}
+
+
+def has_param(bound, name):
+    for b in bound:
+        if b.name == name:
+            return True
+    return False
+
+
+def location_stack(pw, bound):
+    """The location stack -StackName names (folded), else the current one;
+    "?": one only running tells."""
+    for b in bound:
+        if b.name == "StackName":
+            if len(b.vals) == 1 and field_known(b.vals[0]):
+                return fold(field_static(b.vals[0]))
+            return "?"
+    return pw.stack
+
+
+def defaults_reached(pw, stmt):
+    """$PSDefaultParameterValues reached other than by `$PSDefault...[k] =
+    v` or its .Add / .Remove (as another variable, $d = it; through the
+    variable: provider, $ExecutionContext...PSVariable): what's in it, only
+    running tells."""
+    text = fold(stmt.text)
+    k = text.find("psdefaultparametervalues")
+    if k >= 0 and text.find("psdefaultparametervalues", k + 1) < 0:
+        lead = strip(text)
+        if lead.startswith("$psdefaultparametervalues[") or lead.startswith("$psdefaultparametervalues.add(") \
+                or lead.startswith("$psdefaultparametervalues.remove("):
+            return
+    if k >= 0 or "psvariable" in text:
+        pw.defaults["?"] = True
+        return
+    for c in nodes_of(stmt, "command", []):
+        # (Get-Variable PSDefault*, ('PSDefault' + ...): which variable,
+        # maybe the table)
+        words = fold(c.text).split()
+        if len(words) > 1 and words[0] in VARIABLE_CMDLETS:
+            rest = " ".join(words[1:])
+            if "$" in rest or "(" in rest or "*" in rest or "?" in rest or "[" in rest:
+                pw.defaults["?"] = True
 
 
 def forget_changed(pw, stmt):
@@ -917,13 +1012,25 @@ def cmdlet(rt, pw, c, words, reds, span):
             v = default_value(pw, c.name, p)
             if v is not None:
                 bound.append(Bound(p, c.params[p], [Field([v], False, False)]))
+    stack =location_stack(pw, bound) if c.name == "Push-Location" or c.name == "Pop-Location" \
+        or c.name == "Set-Location" else ""
     if c.name == "Push-Location":
-        pw.locations.append(pw.cwd)
+        if stack not in pw.locations:
+            pw.locations[stack] = []
+        pw.locations[stack].append(pw.cwd)
     e = Execution(argv, {}, reds, pw.cwd, span, pw.via, None, "program", [], [], True, c.readonly)
     pw.r.executions.append(e)
     if c.name == "Pop-Location":
-        # (back where the last Push-Location was; none: only running tells)
-        pw.cwd = pw.locations.pop() if len(pw.locations) > 0 else None
+        # (back where the last Push-Location on its stack was; none: only
+        # running tells)
+        if stack in pw.locations and len(pw.locations[stack]) > 0:
+            pw.cwd = pw.locations[stack].pop()
+        else:
+            pw.cwd = None
+    if c.name == "Set-Location" and has_param(bound, "StackName"):
+        # (Set-Location -StackName S: S the stack Push-Location and
+        # Pop-Location use from then on)
+        pw.stack = stack
     if c.name == "New-Item":
         kind = None
         for b in bound:
@@ -1088,7 +1195,53 @@ def ps_option(opt):
 
 
 def powershell(rt, pw, e, args, span):
-    """powershell -Command TEXT / -EncodedCommand B64 / -File F / TEXT."""
+    """powershell -Command TEXT / -EncodedCommand B64 / -File F / TEXT;
+    then, with -NoExit, `-Command -` or none, the commands on its stdin."""
+    launched(rt, pw, args, span)
+    if e.stdin is not None and ps_reads_stdin(args):
+        ps_stdin(rt, pw, e, span)
+
+
+def ps_reads_stdin(args):
+    """Does powershell read commands from its stdin: -NoExit, -Command -,
+    -File -, or no command given?"""
+    i = 0
+    while i < len(args):
+        s = fold(field_static(args[i])) if field_known(args[i]) else None
+        nxt = field_static(args[i + 1]) if i + 1 < len(args) and field_known(args[i + 1]) else None
+        if s is None:
+            return True
+        if not ((s.startswith("-") or s.startswith("/")) and len(s) > 1):
+            return False
+        opt = ps_option(s[1:])
+        if opt == "noexit":
+            return True
+        if opt == "command" or opt == "file":
+            return nxt == "-" or nxt is None
+        if opt == "encodedcommand":
+            return False
+        i += 2 if opt in PS_VALUED else 1
+    return True
+
+
+def ps_stdin(rt, pw, e, span):
+    if e.stdin.text is not None:
+        code(rt, pw, e.stdin.text, span, "powershell (its stdin)")
+    elif downloads_into(e):
+        note(rt, pw, "powershell runs what " + str(exec_name(e.stdin.producer)) + " downloads, on its stdin", span,
+             "downloaded_code", [])
+    else:
+        note(rt, pw, "powershell reads more commands from its stdin, which only running tells", span, "inline_code",
+             [])
+
+
+def downloads_into(e):
+    """Is what's piped into it a download's?"""
+    p = e.stdin.producer if e.stdin is not None else None
+    return p is not None and (exec_name(p) in DOWNLOADING or exec_name(p) in BASH_DOWNLOADERS)
+
+
+def launched(rt, pw, args, span):
     i = 0
     while i < len(args):
         a = args[i]
@@ -1124,13 +1277,16 @@ def powershell(rt, pw, e, args, span):
                         known = False
                         break
                     texts.append(field_static(f))
+                if texts == ["-"]:
+                    # (-Command -: its stdin's, ps_stdin)
+                    return
                 if len(rest) > 0 and known:
                     code(rt, pw, " ".join(texts), span, "powershell -Command")
                 elif len(rest) > 0:
                     note(rt, pw, "powershell -Command: code only running tells", span, "code", [])
                 return
             if opt == "file":
-                if nxt is not None:
+                if nxt is not None and not (field_known(nxt) and field_static(nxt) == "-"):
                     note(rt, pw, "powershell -File: runs the code in " + field_text(nxt), span, "code_file", [nxt])
                 return
             i += 2 if opt in PS_VALUED else 1

@@ -61,6 +61,15 @@ values = ["--output"]
 | `classpath` | a class path (`java -cp a:b`) | each entry's code an Unknown |
 | `cmake_define` | `-DKEY=VALUE` | a script key (`CMAKE_PROJECT_INCLUDE`): code; a compiler or launcher: a program |
 | `java_main` | java's main class, or a `.java` source | a source: code |
+| `project` | the folder a tool works on (`npm --prefix`, `cmake -S`, pytest's paths) | where its project's code runs, below |
+| `project_file` | a file in that folder (`cargo --manifest-path`) | its folder, as `project` |
+| `options:PROGRAM` | an option of another program (`javac -J-agentpath:...`: java's) | read with that program's spec |
+| `gradle_property` | `-Dkey=value` (`org.gradle.jvmargs`: java's options) | as the key's |
+| `java_log` / `java_xx` | `-Xlog:...:file=PATH`, `-XX:KEY=VALUE` | the file written; `OnError=` a command run |
+| `interpreter` | an interpreter by version or path (`UV_PYTHON`) | a path: an execution of it |
+| `awk_w` | mawk `-W exec=FILE` | the file's code an Unknown |
+| `read_or_list` / `archive_switch` | 7z's files, `@LIST`, `-i@LIST` / `-i!PATH` | read, or `file_list` |
+| `rustc_extern` | `--extern NAME=PATH` (a proc-macro's library) | its code an Unknown |
 | `plain` | nothing vetter needs | — |
 
 `operands` is a role for all operands, or a list for each in order where
@@ -71,9 +80,22 @@ Unknown.
 
 The environment's roles (`env.toml`) are these, and `options:PROGRAM` (more
 options, read with that program's spec: `MAKEFLAGS`, `GOFLAGS`,
-`JAVA_TOOL_OPTIONS`), `code_file_list` (`MAKEFILES`), `shell_expanded` (a
-value a shell expands again: `PS0`-`PS4`); `BASH_FUNC_f%%` defines a bash
-function.
+`JAVA_TOOL_OPTIONS`, `RUSTFLAGS`; `CARGO_ENCODED_*` split at `\x1f`),
+`code_file_list` (`MAKEFILES`), `shell_expanded` (a value a shell expands
+again: `PS0`-`PS4`); `BASH_FUNC_f%%` defines a bash function. A name with a
+`*` matches any part there (`CARGO_TARGET_*_LINKER`). What a variable makes
+run runs without it (`RUSTFLAGS`' linker isn't given `RUSTFLAGS` again).
+
+A tool's project code (a `project_code` flag: make's recipes, npm's scripts,
+pytest's tests, git's repository config) is where the tool works on: its
+`project` values, else its `cwd` (`make -C`), else where it runs. The stock
+policy allows it in the project; when the command (or the agent before it)
+wrote a file there that says what runs (a `Makefile`, `package.json`,
+`conftest.py`, `.git/config`...), it's `generated`.
+
+What an archive tool extracts (`tar x`, `unzip`, `7z x`, `cpio -i`) may be
+links to anywhere: later in the command, a file below where it extracted is
+one only running tells, and what runs from there is `generated`.
 
 `program_args` is a command to run (the wrapper's). `ln`: each link written,
 what it points to read and written too (what's done through it is done to

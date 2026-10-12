@@ -57,7 +57,7 @@ allow "git, locally" {
     unless --ext-diff, --textconv, -c
 }
 allow "the project's own code" {
-  run project-code              # make, cargo build/test, go test, npm run X
+  run project-code in $project  # make, cargo build/test, go test, npm run X: on the project's files
   run script in $project        # python3 tools/x.py, ./build.sh
 }
 allow "reading in the project"           read in $project, $temp

@@ -8,7 +8,8 @@
 name = ["gcc", "g++", "cc", "c++", "clang", "clang++", "cpp"]
 values = ["-o", "-x", "-I", "-L", "-D", "-U", "-include", "-imacros", "-isystem", "-iquote", "-idirafter", "-MF", "-MT",
           "-MQ", "-wrapper", "-B", "-specs", "--specs", "-fplugin", "-fpass-plugin", "-fuse-ld", "-T", "--sysroot",
-          "-target", "--target", "-Xlinker", "-Xassembler", "-Xpreprocessor", "-Xclang", "-arch", "-e", "-u"]
+          "-target", "--target", "-Xlinker", "-Xassembler", "-Xpreprocessor", "-Xclang", "-arch", "-e", "-u",
+          "--config", "--config-system-dir", "--config-user-dir"]
 single_dash_long = true
 attached = ["-o", "-B", "-MF"]
 response_files = true
@@ -26,19 +27,28 @@ operands = "read"
 "-fplugin" = "code_file"
 "-fpass-plugin" = "code_file"
 "-fuse-ld" = "linker"
+# (clang --config FILE: options read from it; the folders it finds them in)
+"--config" = "config_file"
+"--config-system-dir" = "configured"
+"--config-user-dir" = "configured"
 
 [[spec]]
 name = ["cmake"]
 values = ["-S", "-B", "-D", "-U", "-G", "-T", "-A", "-C", "-P", "--build", "--install", "--preset", "--toolchain",
           "--graphviz", "-j", "--parallel", "--target", "--config", "--prefix", "--component"]
 attached = ["-D", "-S", "-B", "-G", "-C"]
+# (the source tree or build tree it configures)
+operands = "project"
 [spec.roles]
 # (-DKEY=VALUE: a script it includes, CMAKE_PROJECT_INCLUDE...)
 "-D" = "cmake_define"
 "-P" = "code_file"
 "-C" = "code_file"
 "--toolchain" = "code_file"
-"--build" = "cwd"
+"--build" = "project"
+"-S" = "project"
+[spec.flags]
+"cmake" = {reason = "runs the CMakeLists.txt, the build's commands", kind = "project_code"}
 
 [[spec]]
 name = ["rustc"]
@@ -52,17 +62,30 @@ operands = "read"
 "--codegen" = "rustc_codegen"
 "-o" = "write"
 "-Z" = "configured"
+# (--extern NAME=PATH: a proc-macro crate's library runs in rustc)
+"--extern" = "rustc_extern"
 
 [[spec]]
 name = ["java", "javaw"]
 values = ["-cp", "-classpath", "--class-path", "-p", "--module-path", "-m", "--module", "-jar", "--source"]
 single_dash_long = true
 stop_at_operand = true
-attached = ["-javaagent:", "-agentpath:", "-agentlib:", "-Xbootclasspath/a:", "-Xbootclasspath/p:"]
+attached = ["-javaagent:", "-agentpath:", "-agentlib:", "-Xbootclasspath/a:", "-Xbootclasspath/p:", "-Xlog:", "-XX:",
+            "-Djava.security.manager=", "-Djava.system.class.loader=", "-Djava.library.path=",
+            "-Djdk.module.path=", "-Djava.class.path=", "-Djava.ext.dirs=", "-Djava.endorsed.dirs="]
 response_files = true
 # (its main class, or a .java source run; then the program's arguments)
 operands = ["java_main", "plain*"]
 [spec.roles]
+"-Xlog:" = "java_log"
+"-XX:" = "java_xx"
+"-Djava.library.path=" = "classpath"
+"-Djdk.module.path=" = "classpath"
+"-Djava.class.path=" = "classpath"
+"-Djava.ext.dirs=" = "classpath"
+"-Djava.endorsed.dirs=" = "classpath"
+"-Djava.security.manager=" = "configured"
+"-Djava.system.class.loader=" = "configured"
 "-javaagent:" = "agent_file"
 "-agentpath:" = "agent_file"
 "-agentlib:" = "agent_file"
@@ -81,10 +104,12 @@ values = ["-d", "-s", "-h", "-cp", "-classpath", "--class-path", "-sourcepath", 
           "--processor-path", "-processor", "-p", "--module-path", "-encoding", "--release", "-source", "-target",
           "-implicit", "-Xplugin"]
 single_dash_long = true
-attached = ["-Xplugin:"]
+attached = ["-Xplugin:", "-J"]
 response_files = true
 operands = "read"
 [spec.roles]
+# (-J-agentpath:...: the options of the JVM javac runs in)
+"-J" = "options:java"
 "-d" = "write"
 "-s" = "write"
 "-h" = "write"
@@ -104,6 +129,8 @@ values = ["-f", "-C", "-j", "-l", "-k", "-d", "-t", "-w"]
 # (the manifest: its rules are the commands it runs)
 "-f" = "code_file"
 "-C" = "cwd"
+[spec.flags]
+"ninja" = {reason = "runs the build.ninja's commands", kind = "project_code"}
 
 [[spec]]
 name = ["gradle", "gradlew"]
@@ -119,11 +146,17 @@ attached = ["-D", "-P"]
 "--build-file" = "code_file"
 "-c" = "code_file"
 "--settings-file" = "code_file"
-"-p" = "code_file"
-"--project-dir" = "code_file"
+"-p" = "project"
+"--project-dir" = "project"
 "--include-build" = "code_file"
 "-g" = "configured"
 "--gradle-user-home" = "configured"
+# (-Dorg.gradle.jvmargs=...: its daemon's JVM options)
+"-D" = "gradle_property"
+"--system-prop" = "gradle_property"
+[spec.flags]
+"gradle" = {reason = "runs the build scripts", kind = "project_code"}
+"gradlew" = {reason = "runs the build scripts", kind = "project_code"}
 
 [[spec]]
 name = ["mvn", "mvnw"]
@@ -133,14 +166,37 @@ single_dash_long = true
 attached = ["-D"]
 [spec.roles]
 # (the pom built: its plugins run)
-"-f" = "code_file"
-"--file" = "code_file"
+"-f" = "project_file"
+"--file" = "project_file"
 "-s" = "configured"
 "--settings" = "configured"
 "-gs" = "configured"
 "--global-settings" = "configured"
 "-l" = "write"
 "--log-file" = "write"
+[spec.flags]
+"mvn" = {reason = "runs the pom's plugins", kind = "project_code"}
+"mvnw" = {reason = "runs the pom's plugins", kind = "project_code"}
+
+# pytest [PATH...]: the tests under each path, their conftest.py files and
+# the plugins they name
+[[spec]]
+name = ["pytest", "py.test"]
+values = ["-c", "--config-file", "--rootdir", "--confcutdir", "-p", "-k", "-m", "--basetemp", "--junitxml",
+          "--junit-xml", "--import-mode", "-o", "--override-ini", "--deselect", "--ignore", "--ignore-glob", "--tb",
+          "--maxfail", "--durations", "-n", "--dist", "--cov", "--cov-report", "--log-file", "--result-log"]
+operands = "project"
+[spec.roles]
+"-c" = "config_file"
+"--config-file" = "config_file"
+"--rootdir" = "project"
+"--basetemp" = "write"
+"--junitxml" = "write"
+"--junit-xml" = "write"
+"--log-file" = "write"
+[spec.flags]
+"pytest" = {reason = "runs the tests, their conftest.py files", kind = "project_code"}
+"py.test" = {reason = "runs the tests, their conftest.py files", kind = "project_code"}
 
 [[spec]]
 name = ["zig"]

@@ -20,8 +20,12 @@ commands = ["add", "am", "annotate", "apply", "archive", "bisect", "blame", "bra
 "-c" = "git_config"
 "--config-env" = "git_config"
 "--exec-path" = "code_file"
-"--git-dir" = "plain"
-"--work-tree" = "plain"
+# (the repository it works on: its config's settings run, core.fsmonitor)
+"--git-dir" = "project"
+"--work-tree" = "project"
+
+[flags]
+"git" = {reason = "runs what the repository's config names", kind = "project_code"}
 
 # Config keys whose value runs something (lowercase; `*` matches a part)
 [config]

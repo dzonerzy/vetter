@@ -1,0 +1,195 @@
+# What the second round's fixes must still allow: the same tools and shell
+# state, used on the project as usual.
+
+[[case]]
+id = "harmless-r2-pushd-popd"
+shell = "bash"
+command = "pushd src >/dev/null && ls && popd >/dev/null && cat README.md"
+runs = ["pushd", "ls", "popd", "cat"]
+expect = "allow"
+why = "popd goes back to the project"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-pushd-rotate-in-project"
+shell = "bash"
+command = "pushd src >/dev/null; pushd docs >/dev/null; pushd +1 >/dev/null; cat notes.txt"
+runs = ["pushd", "cat"]
+expect = "allow"
+why = "the rotation lands in the project's src"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-export-plain"
+shell = "bash"
+command = "NAME=world; export NAME; echo hello $NAME"
+runs = ["export", "echo"]
+expect = "allow"
+why = "a variable that changes nothing that runs"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-set-a"
+shell = "bash"
+command = "set -a; GREETING=hi; set +a; echo $GREETING"
+runs = ["set", "echo"]
+expect = "allow"
+why = "an exported greeting"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-nameref"
+shell = "bash"
+command = "declare -n r=count; r=3; echo $count"
+runs = ["declare", "echo"]
+expect = "allow"
+why = "echo prints whatever count is"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-rustflags"
+shell = "bash"
+command = "RUSTFLAGS='-C opt-level=3 -C target-cpu=native' cargo build --release"
+runs = ["cargo"]
+expect = "allow"
+why = "optimisation flags"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-cmake"
+shell = "bash"
+command = "cmake -S . -B build && cmake --build build"
+runs = ["cmake"]
+expect = "allow"
+why = "the project's own build"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-make-C"
+shell = "bash"
+command = "make -C lib all"
+runs = ["make"]
+expect = "allow"
+why = "the project's own Makefile"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-npm-test"
+shell = "bash"
+command = "npm test"
+runs = ["npm"]
+expect = "allow"
+why = "the project's own test script"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-npm-prefix-in-project"
+shell = "bash"
+command = "npm --prefix web run build"
+runs = ["npm"]
+expect = "allow"
+why = "a package in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-pytest"
+shell = "bash"
+command = "pytest -q tests/test_parser.py::test_empty"
+runs = ["pytest"]
+expect = "allow"
+why = "the project's tests"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-git-C"
+shell = "bash"
+command = "git -C vendor/lib log --oneline -5"
+runs = ["git"]
+expect = "allow"
+why = "a repository in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-javac"
+shell = "bash"
+command = "javac -J-Xmx1g -d out src/Main.java"
+runs = ["javac"]
+expect = "allow"
+why = "a JVM memory option"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-java-xlog-project"
+shell = "bash"
+command = "java -Xlog:gc:file=gc.log -jar app.jar"
+runs = ["java"]
+expect = "allow"
+why = "the log in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-time-o"
+shell = "bash"
+command = "/usr/bin/time -o timing.txt make"
+runs = ["time", "make"]
+expect = "allow"
+why = "the timing in the project"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-zip"
+shell = "bash"
+command = "zip -r site.zip public"
+runs = ["zip"]
+expect = "allow"
+why = "the project's files in an archive in it"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-7z-add"
+shell = "bash"
+command = "7z a site.7z public && cat notes.txt"
+runs = ["7z", "cat"]
+expect = "allow"
+why = "an archive made, not extracted: what's read after, as it is"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-cmd-for-f"
+shell = "cmd"
+command = '''for /f %A in ('echo hi') do @echo %A'''
+runs = ["echo"]
+expect = "allow"
+why = "for /f with cmd's own COMSPEC"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-cmd-cd"
+shell = "cmd"
+command = '''cmd /v:on /c "cd src & type !CD!\notes.txt"'''
+runs = ["cmd", "type"]
+expect = "allow"
+why = "!CD! is the project's src"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-ps-stacks"
+shell = "powershell"
+command = '''Push-Location src -StackName work
+Get-ChildItem
+Pop-Location -StackName work
+Get-Content README.md'''
+runs = ["Push-Location", "Get-ChildItem", "Pop-Location", "Get-Content"]
+expect = "allow"
+why = "the named stack pops back to the project"
+source = "derived"
+
+[[case]]
+id = "harmless-r2-ps-defaults"
+shell = "powershell"
+command = '''$PSDefaultParameterValues['Get-Content:Encoding'] = 'utf8'
+Get-Content README.md'''
+runs = ["Get-Content"]
+expect = "allow"
+why = "a default the table is given plainly"
+source = "derived"

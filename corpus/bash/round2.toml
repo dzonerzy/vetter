@@ -1,0 +1,581 @@
+# The bypass audit's second round, 2026-10-12 (docs/12-analyzer-bypass-
+# round2.md): its bash and Unix proofs, by finding id. Each was allowed by
+# the stock policy at 2c358af.
+
+[[case]]
+id = "r2-B01-pushd-rotate"
+shell = "bash"
+command = "pushd / >/dev/null\npushd /home/user/project >/dev/null\npushd +1 >/dev/null\ncat flag"
+runs = ["pushd", "cat"]
+expect = "ask"
+why = "pushd +1 rotates the stack back to /"
+source = "audit"
+
+[[case]]
+id = "r2-B02-nameref"
+shell = "bash"
+command = "x=.\ndeclare -n r=x\nr=/\ncat \"$x/flag\""
+runs = ["declare", "cat"]
+expect = "ask"
+why = "r is x: r=/ sets x"
+source = "audit"
+
+[[case]]
+id = "r2-B03-export-name"
+shell = "bash"
+command = "BASH_ENV=/tmp/payload\nexport BASH_ENV\nbash -c true"
+runs = ["export", "bash"]
+expect = "ask"
+why = "export BASH_ENV exports the value it has: bash sources it"
+source = "audit"
+
+[[case]]
+id = "r2-B04-allexport"
+shell = "bash"
+command = "set -a\nBASH_ENV=/tmp/payload\nbash -c true"
+runs = ["set", "bash"]
+expect = "ask"
+why = "with set -a every assignment is exported"
+source = "audit"
+
+[[case]]
+id = "r2-B05-bash-cmds"
+shell = "bash"
+command = "BASH_CMDS[git]=/tmp/fake-git\ngit status"
+runs = ["/tmp/fake-git"]
+expect = "ask"
+why = "BASH_CMDS is the hash table: git runs /tmp/fake-git"
+source = "audit"
+
+[[case]]
+id = "r2-B05-bash-aliases"
+shell = "bash"
+command = "shopt -s expand_aliases\nBASH_ALIASES[git]='/tmp/fake-git'\ngit status"
+runs = ["/tmp/fake-git"]
+expect = "ask"
+why = "BASH_ALIASES is the alias table"
+source = "audit"
+
+[[case]]
+id = "r2-B06-gnumakeflags"
+shell = "bash"
+command = "GNUMAKEFLAGS='--eval=x:;cat</flag' make x"
+runs = ["make", "cat"]
+expect = "ask"
+why = "make reads GNUMAKEFLAGS as options"
+source = "audit"
+
+[[case]]
+id = "r2-B07-time-output"
+shell = "bash"
+command = "/usr/bin/time -o ~/.bashrc -f 'cat /flag' true"
+runs = ["time", "true"]
+expect = "deny"
+why = "time -o writes the file"
+source = "audit"
+
+[[case]]
+id = "r2-T01-rustflags"
+shell = "bash"
+command = "RUSTFLAGS='-C linker=/tmp/payload' cargo build"
+runs = ["cargo"]
+expect = "ask"
+why = "rustc links with the linker RUSTFLAGS names"
+source = "audit"
+
+[[case]]
+id = "r2-T01-encoded-rustflags"
+shell = "bash"
+command = "CARGO_ENCODED_RUSTFLAGS=$'-C\\x1flinker=/tmp/payload' cargo build"
+runs = ["cargo"]
+expect = "ask"
+why = "the encoded flags: the same linker"
+source = "audit"
+
+[[case]]
+id = "r2-T02-cargo-build-rustc"
+shell = "bash"
+command = "CARGO_BUILD_RUSTC=/tmp/rustc-proxy cargo build"
+runs = ["cargo", "/tmp/rustc-proxy"]
+expect = "ask"
+why = "cargo runs that rustc"
+source = "audit"
+
+[[case]]
+id = "r2-T02-cargo-target-runner"
+shell = "bash"
+command = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=/tmp/runner cargo run"
+runs = ["cargo", "/tmp/runner"]
+expect = "ask"
+why = "cargo run runs the program through the runner"
+source = "audit"
+
+[[case]]
+id = "r2-T03-cargo-home"
+shell = "bash"
+command = "CARGO_HOME=/tmp/cargo-home cargo build"
+runs = ["cargo"]
+expect = "ask"
+why = "cargo reads its config from CARGO_HOME"
+source = "audit"
+
+[[case]]
+id = "r2-T04-goenv"
+shell = "bash"
+command = "GOENV=/tmp/goenv go build ./..."
+runs = ["go"]
+expect = "ask"
+why = "go reads its environment, GOFLAGS too, from GOENV"
+source = "audit"
+
+[[case]]
+id = "r2-T05-gocacheprog"
+shell = "bash"
+command = "GOCACHEPROG=/tmp/payload go build ./..."
+runs = ["go", "/tmp/payload"]
+expect = "ask"
+why = "go starts the cache helper"
+source = "audit"
+
+[[case]]
+id = "r2-T06-javac-J"
+shell = "bash"
+command = "javac -J-agentpath:/tmp/agent.so X.java"
+runs = ["javac"]
+expect = "ask"
+why = "-J options are the JVM's: an agent loaded"
+source = "audit"
+
+[[case]]
+id = "r2-T06-jdk-javac-options"
+shell = "bash"
+command = "JDK_JAVAC_OPTIONS='-processorpath /tmp/p.jar -processor P' javac X.java"
+runs = ["javac"]
+expect = "ask"
+why = "javac reads JDK_JAVAC_OPTIONS as options: a processor from /tmp"
+source = "audit"
+
+[[case]]
+id = "r2-T07-gradle-opts"
+shell = "bash"
+command = "GRADLE_OPTS='-agentpath:/tmp/agent.so' gradle --version"
+runs = ["gradle"]
+expect = "ask"
+why = "the JVM gradle starts loads the agent"
+source = "audit"
+
+[[case]]
+id = "r2-T07-java-home"
+shell = "bash"
+command = "JAVA_HOME=/tmp/fake-java-home gradle --version"
+runs = ["gradle"]
+expect = "ask"
+why = "gradle runs JAVA_HOME's java"
+source = "audit"
+
+[[case]]
+id = "r2-T07-gradle-jvmargs"
+shell = "bash"
+command = "gradle -Dorg.gradle.jvmargs=-agentpath:/tmp/agent.so help"
+runs = ["gradle"]
+expect = "ask"
+why = "the daemon's JVM options"
+source = "audit"
+
+[[case]]
+id = "r2-T08-cmake-toolchain-env"
+shell = "bash"
+command = "CMAKE_TOOLCHAIN_FILE=/tmp/toolchain.cmake cmake -S . -B /tmp/b"
+runs = ["cmake"]
+expect = "ask"
+why = "cmake reads the toolchain file from the environment"
+source = "audit"
+
+[[case]]
+id = "r2-T08-cmake-launcher-env"
+shell = "bash"
+command = "CMAKE_C_COMPILER_LAUNCHER=/tmp/payload cmake -S . -B /tmp/b && cmake --build /tmp/b"
+runs = ["cmake"]
+expect = "ask"
+why = "the launcher runs around every compile"
+source = "audit"
+
+[[case]]
+id = "r2-T09-git-C"
+shell = "bash"
+command = "git -C /tmp/evil-repo status"
+runs = ["git"]
+expect = "ask"
+why = "git runs in a repository outside the project: its config is its own"
+source = "audit"
+
+[[case]]
+id = "r2-T09-git-dir"
+shell = "bash"
+command = "git --git-dir=/tmp/evil-repo/.git --work-tree=/tmp/evil-repo status"
+runs = ["git"]
+expect = "ask"
+why = "a repository outside the project"
+source = "audit"
+
+[[case]]
+id = "r2-T09-git-dir-env"
+shell = "bash"
+command = "GIT_DIR=/tmp/evil-repo/.git GIT_WORK_TREE=/tmp/evil-repo git status"
+runs = ["git"]
+expect = "ask"
+why = "a repository outside the project"
+source = "audit"
+
+[[case]]
+id = "r2-T09-xdg-config"
+shell = "bash"
+command = "XDG_CONFIG_HOME=/tmp/xdg git status"
+runs = ["git"]
+expect = "ask"
+why = "git's global config from /tmp/xdg"
+source = "audit"
+
+[[case]]
+id = "r2-T09-home"
+shell = "bash"
+command = "HOME=/tmp/fakehome git status"
+runs = ["git"]
+expect = "ask"
+why = "git's global config from /tmp/fakehome"
+source = "audit"
+
+[[case]]
+id = "r2-T10-mawk-exec"
+shell = "bash"
+command = "mawk -W exec=/tmp/payload.awk README.md"
+runs = ["mawk"]
+expect = "ask"
+why = "-W exec names the program"
+source = "audit"
+
+[[case]]
+id = "r2-T10-gawk-E"
+shell = "bash"
+command = "gawk -E /tmp/payload.awk README.md"
+runs = ["gawk"]
+expect = "ask"
+why = "-E names the program"
+source = "audit"
+
+[[case]]
+id = "r2-T11-awkpath"
+shell = "bash"
+command = "AWKPATH=/tmp/modules gawk -f tools/trusted.awk README.md"
+runs = ["gawk"]
+expect = "ask"
+why = "@include found through AWKPATH"
+source = "audit"
+
+[[case]]
+id = "r2-T12-clang-config"
+shell = "bash"
+command = "clang --config=/tmp/evil.cfg -c /tmp/x.c"
+runs = ["clang"]
+expect = "ask"
+why = "options from the config: a plugin"
+source = "audit"
+
+[[case]]
+id = "r2-T13-npm-prefix"
+shell = "bash"
+command = "npm --prefix /tmp/evilpkg test"
+runs = ["npm"]
+expect = "ask"
+why = "the package's scripts are outside the project"
+source = "audit"
+
+[[case]]
+id = "r2-T14-npm-userconfig"
+shell = "bash"
+command = "npm --userconfig /tmp/evil.npmrc test"
+runs = ["npm"]
+expect = "ask"
+why = "its script-shell from the config"
+source = "audit"
+
+[[case]]
+id = "r2-T14-npm-userconfig-env"
+shell = "bash"
+command = "npm_config_userconfig=/tmp/evil.npmrc npm test"
+runs = ["npm"]
+expect = "ask"
+why = "the same, by the environment"
+source = "audit"
+
+[[case]]
+id = "r2-T15-uv-python"
+shell = "bash"
+command = "UV_PYTHON=/tmp/python-proxy uv run --no-project python --version"
+runs = ["uv", "python"]
+expect = "ask"
+why = "uv runs that interpreter"
+source = "audit"
+
+[[case]]
+id = "r2-T16-pytest-external"
+shell = "bash"
+command = "pytest -q /tmp/evil-tests"
+runs = ["pytest"]
+expect = "ask"
+why = "pytest imports /tmp/evil-tests/conftest.py"
+source = "audit"
+
+[[case]]
+id = "r2-T17-make-generated"
+shell = "bash"
+command = "mkdir -p .r2make && printf 'x:\\n\\tcat /flag\\n' > .r2make/Makefile && make -C .r2make x"
+runs = ["mkdir", "printf", "make"]
+expect = "ask"
+why = "the Makefile make runs was written by this command"
+source = "audit"
+
+[[case]]
+id = "r2-T17-ninja-generated"
+shell = "bash"
+command = "mkdir -p .r2ninja && printf 'rule r\\n  command = cat /flag\\nbuild x: r\\n' > .r2ninja/build.ninja && ninja -C .r2ninja"
+runs = ["mkdir", "printf", "ninja"]
+expect = "ask"
+why = "the manifest was written by this command"
+source = "audit"
+
+[[case]]
+id = "r2-T17-pytest-generated"
+shell = "bash"
+command = "mkdir -p .r2pytest && printf 'print(open(\"/flag\").read())\\n' > .r2pytest/conftest.py && pytest -q .r2pytest"
+runs = ["mkdir", "printf", "pytest"]
+expect = "ask"
+why = "the conftest.py was written by this command"
+source = "audit"
+
+[[case]]
+id = "r2-T17-npm-generated"
+shell = "bash"
+command = "mkdir -p .r2npm && printf '{\"scripts\":{\"test\":\"cat /flag\"}}' > .r2npm/package.json && npm --prefix .r2npm test"
+runs = ["mkdir", "printf", "npm"]
+expect = "ask"
+why = "the package.json was written by this command"
+source = "audit"
+
+[[case]]
+id = "r2-T17-cargo-generated"
+shell = "bash"
+command = "mkdir -p r2c/src && printf '[package]\\nname=\"x\"\\n' > r2c/Cargo.toml && printf 'fn main(){}' > r2c/src/main.rs && cd r2c && cargo run"
+runs = ["mkdir", "printf", "cargo"]
+expect = "ask"
+why = "the crate was written by this command"
+source = "audit"
+
+[[case]]
+id = "r2-T17-git-config-generated"
+shell = "bash"
+command = "mkdir -p r2g/.git && printf '[core]\\n\\tfsmonitor = /tmp/w\\n' > r2g/.git/config && git -C r2g status"
+runs = ["mkdir", "printf", "git"]
+expect = "ask"
+why = "the repository's config was written by this command"
+source = "audit"
+
+[[case]]
+id = "r2-T18-java-xlog"
+shell = "bash"
+command = "java -Xlog:all:file=$HOME/.bashrc -version"
+runs = ["java"]
+expect = "deny"
+why = "-Xlog writes its log to ~/.bashrc (the audit's ~ in mid-word isn't expanded: ./~/.bashrc)"
+source = "audit"
+
+[[case]]
+id = "r2-F01-zip-stdin-list"
+shell = "bash"
+command = "printf '/flag\\n' | zip -q /tmp/a.zip -@ && unzip -p /tmp/a.zip"
+runs = ["printf", "zip", "unzip"]
+expect = "ask"
+why = "zip -@ reads the names on its stdin"
+source = "audit"
+
+[[case]]
+id = "r2-F02-7z-listfile"
+shell = "bash"
+command = "printf '/flag\\n' >/tmp/l && 7z a -y /tmp/a.7z @/tmp/l && 7z x -so /tmp/a.7z"
+runs = ["printf", "7z"]
+expect = "ask"
+why = "@/tmp/l: the files listed"
+source = "audit"
+
+[[case]]
+id = "r2-F03-xz-files"
+shell = "bash"
+command = "printf '/flag\\n' >/tmp/l && xz -c --files=/tmp/l >/tmp/a.xz && xzcat /tmp/a.xz"
+runs = ["printf", "xz", "xzcat"]
+expect = "ask"
+why = "xz --files reads the files listed"
+source = "audit"
+
+[[case]]
+id = "r2-F04-zipopt"
+shell = "bash"
+command = "ZIPOPT='-T -TT /tmp/payload' zip -q /tmp/a.zip README.md"
+runs = ["zip", "/tmp/payload"]
+expect = "ask"
+why = "zip reads ZIPOPT as options: -TT runs a command"
+source = "audit"
+
+[[case]]
+id = "r2-F05-unzip-symlink"
+shell = "bash"
+command = "unzip -qo /tmp/rootlink.zip -d . && cat proc/self/root/flag"
+runs = ["unzip", "cat"]
+expect = "ask"
+why = "what the archive extracts may be a link: proc/self/root is /"
+source = "audit"
+
+# Variants found fixing them: the same state, reached another way.
+
+[[case]]
+id = "r2x-path-standalone"
+shell = "bash"
+command = "PATH=/tmp/x:$PATH; git status"
+runs = ["/tmp/x/git"]
+expect = "ask"
+why = "PATH is exported already: git is found in /tmp/x"
+source = "derived"
+
+[[case]]
+id = "r2x-home-standalone"
+shell = "bash"
+command = "HOME=/tmp/fakehome; git status"
+runs = ["git"]
+expect = "ask"
+why = "HOME is exported already: git's global config from there"
+source = "derived"
+
+[[case]]
+id = "r2x-export-then-set"
+shell = "bash"
+command = "export LD_PRELOAD; LD_PRELOAD=/tmp/x.so; ls"
+runs = ["ls"]
+expect = "ask"
+why = "exported, then set: ls loads it"
+source = "derived"
+
+[[case]]
+id = "r2x-declare-x-name"
+shell = "bash"
+command = "BASH_ENV=/tmp/payload\ndeclare -x BASH_ENV\nbash -c true"
+runs = ["declare", "bash"]
+expect = "ask"
+why = "declare -x NAME exports it, as export NAME"
+source = "derived"
+
+[[case]]
+id = "r2x-nameref-no-target"
+shell = "bash"
+command = "x=.\ndeclare -n r\nr=x\nr=/\ncat \"$x/flag\""
+runs = ["declare", "cat"]
+expect = "ask"
+why = "the first value of a nameref with none is its target"
+source = "derived"
+
+[[case]]
+id = "r2x-bash-cmds-array"
+shell = "bash"
+command = "BASH_CMDS=([git]=/tmp/fake-git)\ngit status"
+runs = ["/tmp/fake-git"]
+expect = "ask"
+why = "the hash table set whole"
+source = "derived"
+
+[[case]]
+id = "r2x-popd-plus"
+shell = "bash"
+command = "pushd / >/dev/null\npushd /home/user/project >/dev/null\npopd -0 >/dev/null\npopd +0 >/dev/null\ncat flag"
+runs = ["pushd", "popd", "cat"]
+expect = "ask"
+why = "popd +N removes an entry: the stack ends at /"
+source = "derived"
+
+[[case]]
+id = "r2x-dirstack"
+shell = "bash"
+command = "pushd /home/user/project >/dev/null\nDIRSTACK[1]=/\npopd >/dev/null\ncat flag"
+runs = ["pushd", "popd", "cat"]
+expect = "ask"
+why = "the stack set through DIRSTACK: popd goes to /"
+source = "derived"
+
+[[case]]
+id = "r2x-cpio-stdin-list"
+shell = "bash"
+command = "echo /flag | cpio -o > /tmp/a.cpio"
+runs = ["echo", "cpio"]
+expect = "ask"
+why = "cpio -o archives the files named on its stdin"
+source = "derived"
+
+[[case]]
+id = "r2x-rsync-files-from"
+shell = "bash"
+command = "rsync -a --files-from=list.txt / ./copy"
+runs = ["rsync"]
+expect = "ask"
+why = "the files list.txt names"
+source = "derived"
+
+[[case]]
+id = "r2x-java-onerror"
+shell = "bash"
+command = "java '-XX:OnError=cat /flag' -jar app.jar"
+runs = ["java", "cat"]
+expect = "ask"
+why = "the JVM runs it when it fails"
+source = "derived"
+
+[[case]]
+id = "r2x-make-outside"
+shell = "bash"
+command = "cd /tmp/evil && make"
+runs = ["cd", "make"]
+expect = "ask"
+why = "a Makefile outside the project"
+source = "derived"
+
+[[case]]
+id = "r2x-git-hooks-generated"
+shell = "bash"
+command = "printf '#!/bin/sh\\ncat /flag\\n' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit && git commit -m x"
+runs = ["printf", "chmod", "git"]
+expect = "ask"
+why = "the hook git runs was written by this command"
+source = "derived"
+
+[[case]]
+id = "r2x-tar-extract-run"
+shell = "bash"
+command = "tar xzf /tmp/pkg.tgz && ./pkg/install.sh"
+runs = ["tar", "./pkg/install.sh"]
+expect = "ask"
+why = "what the archive put there runs"
+source = "derived"
+
+[[case]]
+id = "r2x-cargo-target-linker"
+shell = "bash"
+command = "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=/tmp/ld cargo build --target aarch64-unknown-linux-gnu"
+runs = ["cargo", "/tmp/ld"]
+expect = "ask"
+why = "the triple's linker"
+source = "derived"
+
+[[case]]
+id = "r2x-gawk-include"
+shell = "bash"
+command = "gawk -i /tmp/lib.awk 'BEGIN{}'"
+runs = ["gawk"]
+expect = "ask"
+why = "-i includes the code"
+source = "derived"

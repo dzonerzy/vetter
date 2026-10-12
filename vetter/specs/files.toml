@@ -450,8 +450,8 @@ operands = "sed"
 
 [[spec]]
 name = ["awk", "gawk", "mawk", "nawk"]
-values = ["-F", "-v", "-f", "--file", "-i", "--include", "-l", "--load", "-e", "--source"]
-attached = ["-F", "-v", "-f", "-i", "-l", "-e"]
+values = ["-F", "-v", "-f", "--file", "-i", "--include", "-l", "--load", "-e", "--source", "-E", "--exec", "-W"]
+attached = ["-F", "-v", "-f", "-i", "-l", "-e", "-E", "-W"]
 operands = "awk"
 [spec.roles]
 "-f" = "code_file"
@@ -459,7 +459,13 @@ operands = "awk"
 "-e" = "awk_program"
 "--source" = "awk_program"
 "-i" = "code_file"
+"--include" = "code_file"
 "-l" = "code_file"
+"--load" = "code_file"
+# (gawk -E FILE, mawk -W exec=FILE: the program, the last option)
+"-E" = "code_file"
+"--exec" = "code_file"
+"-W" = "awk_w"
 
 [[spec]]
 name = ["tar", "bsdtar", "gtar"]
@@ -489,6 +495,13 @@ name = ["gzip", "gunzip", "zcat", "bzip2", "bunzip2", "bzcat", "xz", "unxz", "xz
 values = ["-S", "--suffix", "-T", "--threads", "-F", "--format", "-C", "--check", "-M", "--memlimit",
           "--memlimit-compress", "--memlimit-decompress", "--block-size", "--block-list"]
 operands = "read"
+[spec.roles]
+# (xz --files=LIST: the files LIST names; with no LIST, its stdin's)
+"--files" = "file_list"
+"--files0" = "file_list"
+[spec.flags]
+"--files" = {reason = "reads the files named on its stdin, or in the list", kind = "configured"}
+"--files0" = {reason = "reads the files named on its stdin, or in the list", kind = "configured"}
 
 [[spec]]
 name = ["zstd", "unzstd", "zstdcat"]
@@ -516,6 +529,10 @@ operands = ["write", "read*"]
 "-O" = "write"
 "--output-file" = "write"
 "-lf" = "write"
+[spec.flags]
+# (-@: the files to add, named on its stdin)
+"-@" = {reason = "reads the files named on its stdin", kind = "configured"}
+"--names-stdin" = {reason = "reads the files named on its stdin", kind = "configured"}
 
 # unzip ARCHIVE [MEMBER...] [-x MEMBER...] [-d DIR]
 [[spec]]
@@ -529,8 +546,40 @@ operands = ["read", "plain*"]
 name = ["7z", "7za", "7zr"]
 # (its values glued on: -oDIR, -pPASSWORD)
 attached = ["-o", "-p", "-t", "-m", "-x", "-i", "-w"]
-# (7z COMMAND ARCHIVE FILE...: the archive and the files read)
-operands = ["plain", "read*"]
+# (7z COMMAND ARCHIVE FILE...: the archive and the files read; @LIST the
+# files it names)
+operands = ["plain", "read_or_list*"]
 [spec.roles]
 "-o" = "write"
 "-w" = "write"
+"-i" = "archive_switch"
+"-x" = "archive_switch"
+
+# cpio -o, -p: the files named on its stdin, read
+[[spec]]
+name = ["cpio"]
+values = ["-F", "--file", "-O", "-I", "-E", "--pattern-file", "-H", "--format", "-R", "--owner", "-C",
+          "--io-size", "-M", "--message", "--rsh-command", "-D", "--directory"]
+[spec.roles]
+"-O" = "write"
+"-I" = "read"
+"-E" = "read"
+"--pattern-file" = "read"
+"--rsh-command" = "program"
+"-D" = "cwd"
+"--directory" = "cwd"
+[spec.flags]
+"-o" = {reason = "reads the files named on its stdin", kind = "configured"}
+"--create" = {reason = "reads the files named on its stdin", kind = "configured"}
+"-p" = {reason = "copies the files named on its stdin", kind = "configured"}
+"--pass-through" = {reason = "copies the files named on its stdin", kind = "configured"}
+
+# GNU time [-o FILE] COMMAND: the command is a wrapper's; -o's file written
+[[spec]]
+name = ["time"]
+values = ["-f", "--format", "-o", "--output"]
+attached = ["-f", "-o"]
+stop_at_operand = true
+[spec.roles]
+"-o" = "write"
+"--output" = "write"

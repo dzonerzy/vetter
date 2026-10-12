@@ -1,0 +1,74 @@
+# The bypass audit's second round (docs/12-analyzer-bypass-round2.md):
+# cmd.exe's proofs. Each was allowed by the stock policy at 2c358af.
+
+[[case]]
+id = "r2-C01-cmd-k-stdin"
+shell = "bash"
+command = "printf 'type C:\\flag\\r\\nexit\\r\\n' | cmd /d /k echo ok"
+runs = ["printf", "cmd"]
+expect = "ask"
+why = "cmd /K reads more commands from its stdin"
+source = "audit"
+
+[[case]]
+id = "r2-C02-generated-git-cmd"
+shell = "cmd"
+command = '''(echo @type C:\flag)>git.cmd&git status'''
+runs = ["git.cmd"]
+expect = "ask"
+why = "cmd finds git.cmd in the current directory before PATH"
+source = "audit"
+
+[[case]]
+id = "r2-C03-comspec"
+shell = "cmd"
+command = '''set COMSPEC=C:\path\payload.exe&for /f %A in ('echo ok') do @echo %A'''
+runs = ["payload.exe"]
+expect = "ask"
+why = "for /f runs its command with COMSPEC"
+source = "audit"
+
+[[case]]
+id = "r2-C04-delayed-cd"
+shell = "cmd"
+command = '''cmd /v:on /d /c "cd /d C:\ & type !CD!\flag"'''
+runs = ["cmd", "type"]
+expect = "ask"
+why = "!CD! is where cd went"
+source = "audit"
+
+[[case]]
+id = "r2x-cmd-stdin-only"
+shell = "cmd"
+command = '''echo type C:\flag | cmd'''
+runs = ["cmd", "type"]
+expect = "ask"
+why = "cmd with no /c reads its commands from its stdin"
+source = "derived"
+
+[[case]]
+id = "r2x-cmd-file-stdin"
+shell = "cmd"
+command = '''cmd < cmds.txt'''
+runs = ["cmd"]
+expect = "ask"
+why = "the commands in the file"
+source = "derived"
+
+[[case]]
+id = "r2x-comspec-pipe"
+shell = "cmd"
+command = '''set COMSPEC=C:\path\payload.exe&echo a | findstr a'''
+runs = ["payload.exe"]
+expect = "ask"
+why = "each side of a pipe runs in a %COMSPEC%"
+source = "derived"
+
+[[case]]
+id = "r2x-pushd-cd"
+shell = "cmd"
+command = '''cmd /v:on /c "pushd C:\ & type !CD!\flag"'''
+runs = ["cmd", "type"]
+expect = "ask"
+why = "!CD! after pushd"
+source = "derived"

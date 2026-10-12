@@ -10,9 +10,10 @@ from dataclasses import dataclass
 
 from ... import paths
 from ...paths import fold
-from ...specs import Role, is_space, strip
+from ...specs import DOWNLOADERS, Role, is_space, strip
 from ..bash.expand import Field, Variables
-from ..bash.resolve import Ctx, Execution, Redirect, Resolution, Stdin, W, execution, run, unknown
+from ..bash.resolve import Ctx, Execution, Redirect, Resolution, Stdin, W, exec_name, execution, run, unknown
+from ..powershell.cmdlets import DOWNLOADING as PS_DOWNLOADING
 from .syntax import Block, For, If, Simple, expand_marks, parse, split_name
 
 MAX_DEPTH = 8
@@ -72,6 +73,12 @@ class CW:
     stdin_text: object
     # (pushd's: where popd goes back to)
     stack: list
+    # (the command reads a pipe or a file: what, stdin_text if known; the
+    # execution writing into the pipe)
+    piped: bool = False
+    piped_from: object = None
+    # (`set CD=...`: %CD% that, no longer where it is)
+    cd_set: bool = False
 
 
 def walker(r, home, depth, via, delayed):
@@ -371,16 +378,25 @@ def node(rt, w, n):
         producer = None
         before = None
         saved = w.stdin_text
+        saved_piped = w.piped
+        saved_from = w.piped_from
+        if len(n) > 1 and not isinstance(n[0], list):
+            # (each side of a pipe runs in a cmd %COMSPEC% names)
+            comspec(rt, w, n[0].span, "a pipe", None)
         for c in n:
             first = len(w.r.executions)
             # (what echo writes into the pipe: known, set /p reads it)
             w.stdin_text = echo_text(before)
+            w.piped = before is not None or saved_piped
+            w.piped_from = producer
             node(rt, w, c)
             if len(w.r.executions) > first and producer is not None:
                 w.r.executions[first].stdin = Stdin(None, producer)
             producer = w.r.executions[first] if len(w.r.executions) > first else None
             before = c
         w.stdin_text = saved
+        w.piped = saved_piped
+        w.piped_from = saved_from
     elif isinstance(n, Simple):
         simple(rt, w, n)
     elif isinstance(n, Block):
@@ -425,7 +441,8 @@ def for_command(rt, w, n):
         quote = "`" if usebackq else "'"
         text_quote = "'" if usebackq else '"'
         if items.startswith(quote) and items.endswith(quote) and len(items) > 1:
-            # (for /f ... in ('command'): it runs)
+            # (for /f ... in ('command'): it runs, in a cmd %COMSPEC% names)
+            comspec(rt, w, n.span, "for /f", items[1 : len(items) - 1])
             code(rt, w, items[1 : len(items) - 1], n.span, "for /f", None)
         elif not (items.startswith(text_quote) and items.endswith(text_quote) and len(items) > 1):
             # (for /f ... in (FILE...): each file read, its lines the values)
@@ -670,10 +687,22 @@ def simple(rt, w, n):
     argv = [Field([name], False, False)] + [Field([a], False, False) for a in windows_argv(n.args)]
     if low == "cmd":
         w.r.executions.append(execution(argv, {}, reds, w.cwd, span, w.via, None, "program"))
+        saved_piped = w.piped
+        for red in reds:
+            if red.op == "<":
+                # (cmd < file: its commands in the file)
+                w.piped = True
+                w.stdin_text = None
         cmd(rt, w, n.args, span)
+        w.piped = saved_piped
         return
     if low == "powershell" or low == "pwsh":
         e = execution(argv, {}, reds, w.cwd, span, w.via, None, "program")
+        if w.piped:
+            e.stdin = Stdin(w.stdin_text, None)
+        for red in reds:
+            if red.op == "<":
+                e.stdin = Stdin(None, None)
         w.r.executions.append(e)
         ps = ps_walker(w.r, w.home, w.depth + 1)
         ps.cwd = w.cwd
@@ -705,7 +734,27 @@ def simple(rt, w, n):
         return
     # (rundll32, regsvr32, msiexec...: specs/windows.toml; what `set` set:
     # its environment, GIT_SSH_COMMAND...)
+    first = len(w.r.executions)
     run(rt, w.bash, argv, set_env(w), reds, ctx_of(w), span, None, w.via)
+    if len(w.r.executions) > first and w.cwd is not None and "\\" not in name and "/" not in name \
+            and ":" not in name:
+        # (a name alone: cmd looks in the current folder first, each
+        # PATHEXT extension; git.cmd there runs, not PATH's git)
+        for c in here_first(name, w.vars):
+            w.r.executions[first].roles.append(Role("lookup", Field([paths.join(w.cwd, c)], False, False), None))
+
+
+def here_first(name, vars):
+    """The files cmd tries in the current folder for a command name: the
+    name itself with an extension it runs, else the name with each."""
+    exts = vars["PATHEXT"] if "PATHEXT" in vars else ".COM;.EXE;.BAT;.CMD"
+    known = [e for e in exts.split(";") if e != ""]
+    dot = name.rfind(".")
+    if dot > 0:
+        for e in known:
+            if fold(name[dot:]) == fold(e):
+                return [name]
+    return [name + fold(e) for e in known]
 
 
 def set_env(w):
@@ -813,9 +862,11 @@ def internal(rt, w, low, name, args, reds, span):
         # (back where the last pushd was; none to go back to: as it is)
         if len(w.stack) > 0:
             w.cwd = w.stack.pop()
+        current_dir(w)
     elif low == "cd" or low == "chdir" or low == "pushd":
         if len(operands) > 0:
             w.cwd = paths.join(w.cwd, " ".join(operands)) if w.cwd is not None else None
+        current_dir(w)
     elif low == "set":
         set_command(w, args)
     elif low == "call":
@@ -830,6 +881,33 @@ def internal(rt, w, low, name, args, reds, span):
             code(rt, w, rest, span, "call", None)
     elif low == "start":
         start(rt, w, args, span)
+
+
+def current_dir(w):
+    """%CD%, !CD!: where it is now (one `set CD=...` set: that); where only
+    running tells: unreadable."""
+    if w.cd_set:
+        return
+    if w.cwd is None:
+        w.vars.pop("CD", None)
+    else:
+        w.vars["CD"] = w.cwd.replace("/", "\\")
+
+
+def comspec(rt, w, span, label, text):
+    """What cmd runs a child cmd with (for /f's command, each side of a
+    pipe): %COMSPEC% /c TEXT; one set to another program, that program,
+    given /c and the text (None: a text vetter doesn't put together)."""
+    if "COMSPEC" not in w.vars:
+        note(rt, w, label + ": runs %COMSPEC%, unset, which only running tells", span, "code")
+        return
+    v = strip_chars(w.vars["COMSPEC"], '"')
+    if fold(v) == fold(default_env(w.home, w.cwd)["COMSPEC"]) or fold(v) == "cmd" or fold(v) == "cmd.exe":
+        return
+    argv = [Field([v], False, False)]
+    if text is not None:
+        argv += [Field(["/c"], False, False), Field([text], False, False)]
+    run(rt, w.bash, argv, set_env(w), [], ctx_of(w), span, None, w.via + (label,))
 
 
 def set_command(w, args):
@@ -863,6 +941,8 @@ def set_command(w, args):
     key = paths.case_key(name)
     if key == "":
         return
+    if key == "CD":
+        w.cd_set = True
     if kind == "p":
         text = w.stdin_text
         if text is None:
@@ -921,7 +1001,9 @@ def start(rt, w, args, span):
 
 
 def cmd(rt, w, args, span):
-    """cmd /c TEXT, cmd /k TEXT (/v:on: !VAR! expanded too)."""
+    """cmd /c TEXT, cmd /k TEXT (/v:on: !VAR! expanded too). With /k, or
+    neither, it then reads more commands from its stdin: echo's text, or
+    a pipe's or a file's only running tells."""
     at = -1
     for i in range(len(args) - 1):
         if args[i] == "/" and args[i + 1] in "cCkK":
@@ -932,8 +1014,34 @@ def cmd(rt, w, args, span):
         if args[i] == "/" and paths_ascii_lower(args[i + 1 : i + 5]) == "v:on":
             delayed = True
             break
-    if at < 0:
+    if at >= 0:
+        cmd_text(rt, w, args, at, span, delayed)
+    if at >= 0 and args[at + 1] in "cC":
         return
+    cmd_stdin(rt, w, span, delayed)
+
+
+def reads_stdin(args):
+    """cmd with /k or neither /c nor /k: after its command, its stdin's."""
+    for i in range(len(args) - 1):
+        if args[i] == "/" and args[i + 1] in "cCkK":
+            return args[i + 1] in "kK"
+    return True
+
+
+def cmd_stdin(rt, w, span, delayed):
+    """The commands cmd reads on its stdin: echo's text, known; a pipe's or
+    a file's, only running tells."""
+    p = w.piped_from
+    if w.stdin_text is not None:
+        code(rt, w, w.stdin_text, span, "cmd (its stdin)", delayed, True)
+    elif p is not None and (exec_name(p) in DOWNLOADERS or exec_name(p) in PS_DOWNLOADING):
+        note(rt, w, "cmd runs what " + str(exec_name(p)) + " downloads, on its stdin", span, "downloaded_code")
+    elif w.piped:
+        note(rt, w, "cmd reads more commands from its stdin, which only running tells", span, "inline_code")
+
+
+def cmd_text(rt, w, args, at, span, delayed):
     e = at + 2
     while e < len(args) and is_space(args[e]):
         e += 1

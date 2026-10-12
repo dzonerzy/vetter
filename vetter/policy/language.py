@@ -21,9 +21,10 @@ import zgram
 from .. import paths
 from ..glob import match as fnmatch
 from ..shells.bash.syntax import nodes_of, offset
-from ..specs import SPECS, is_space, strip
-from ..shells.bash.expand import field_static
-from .actions import Action, action_text, parts
+from ..specs import SPECS, is_space, project_dirs, strip
+from ..shells.bash.expand import field_known, field_static
+from .actions import Action, action_text, defines, looked_up, parts
+from ..paths import fold
 
 HERE = pathlib.Path(__file__).resolve().parent
 POLICIES = HERE / "builtin"
@@ -1040,7 +1041,7 @@ def machine_actions(p, part):
     """What a program does here that its command doesn't say, deciding on
     this machine: git running what its repository's own config names
     (core.fsmonitor=./w); pytest importing a conftest.py the agent wrote."""
-    from ..gitconfig import repo_config, runs_from
+    from ..gitconfig import isfile, repo_config, runs_from
 
     if part.name is None or part.unknown:
         return []
@@ -1049,9 +1050,18 @@ def machine_actions(p, part):
     if cwd is None:
         return []
     out = []
+    for found in looked_up(part):
+        # (git.cmd in the folder cmd runs git in: that runs, not PATH's)
+        if isfile(found):
+            out.append(Action("run", found, None, "configured", "cmd finds " + found + " before PATH's"))
     if part.name == "git":
-        for setting in runs_from(repo_config(cwd)):
-            out.append(Action("run", None, None, "configured", "the repository's git config: " + setting))
+        # (the repository's: where it runs, or -C's, --git-dir's)
+        for d in project_dirs(e):
+            where = paths.join(cwd, field_static(d)) if field_known(d) else None
+            if where is None:
+                continue
+            for setting in runs_from(repo_config(where)):
+                out.append(Action("run", None, None, "configured", "the repository's git config: " + setting))
     elif part.name in PYTESTS or ((part.name == "python" or part.name == "python3") and runs_pytest(e)):
         # (its conftest.py files: under where it runs, and in the folders
         # above it)
@@ -1082,11 +1092,22 @@ def decide(p, resolution, project, home, temp):
                 a.path = followed(a.path, a.verb)
         if p.follow_links:
             part.actions += machine_actions(p, part)
+        for found in looked_up(part):
+            # (git, after the agent wrote git.cmd where cmd looks first)
+            for f, kind in p.written.items():
+                if fold(f) == fold(found):
+                    part.actions.append(Action("run", found, None, kind, "cmd finds " + found + " first"))
         for a in part.actions:
             # (written by an earlier command: as if by this one)
             plain = a.kind is None or a.kind == "script" or a.kind == "project-code"
             if a.verb == "run" and plain and a.path is not None and a.path in p.written:
                 a.kind = p.written[a.path]
+            elif a.verb == "run" and a.kind == "project-code" and a.path is not None:
+                # (make after the agent wrote the Makefile: what it runs, the
+                # agent's)
+                for f, kind in p.written.items():
+                    if defines(f, a.path):
+                        a.kind = kind
         decided = [decide_action(p, pl, part, a) for a in part.actions]
         run_by_effects(part, decided)
         # (the strictest; among equals, the action itself before "by what

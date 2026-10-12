@@ -17,7 +17,7 @@ an Unknown, unless it's surely a number (a counter, `$(wc -l < f)`).
 
 from dataclasses import dataclass
 
-from .expand import Dynamic, Number, dynamic_text, expand_word, field_known, field_static, param
+from .expand import UNKNOWN, Dynamic, Number, dynamic_text, expand_word, field_known, field_static, param
 
 # (what in an arithmetic text is a value only running tells)
 HOLE = "\x00"
@@ -222,7 +222,7 @@ def value(name, variables, home, depth, out):
     if name not in variables.values:
         # (set outside the command: the environment's)
         return
-    v = variables.values[name]
+    v = variables.values[name] if name not in variables.refs else UNKNOWN
     if v is None or isinstance(v, Number):
         return
     if isinstance(v, str) or isinstance(v, list):

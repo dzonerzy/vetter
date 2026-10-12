@@ -95,7 +95,7 @@ operands = ["read*", "write"]
 "--log-file" = "write"
 "--exclude-from" = "read"
 "--include-from" = "read"
-"--files-from" = "read"
+"--files-from" = "file_list"
 "--password-file" = "read"
 
 [[spec]]

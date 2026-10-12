@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import zgram
 
 from ... import paths
-from ...specs import Role, apply_specs
+from ...specs import Role, apply_specs, env_role
 from . import arith
 from .expand import (
     NUMBER,
@@ -167,6 +167,11 @@ class Ctx:
     # (what a command's name stands for: ("hash", path) after hash -p PATH
     # NAME, ("alias", text or None) after alias NAME=TEXT)
     names: dict = field(default_factory=dict)
+    # (set -a: every variable set is exported)
+    allexport: bool = False
+    # (pushd's directory stack below the current one; None: only running
+    # tells)
+    dirs: object = field(default_factory=list)
 
 
 @dataclass
@@ -183,7 +188,8 @@ class W:
 
 def copy(ctx):
     return Ctx(ctx.cwd, var_copy(ctx.vars), ctx.home, ctx.via, ctx.depth, ctx.span, ctx.parsed, ctx.base,
-               ctx.source, {k: v for k, v in ctx.exported.items()}, ctx.stdin, {k: v for k, v in ctx.names.items()})
+               ctx.source, {k: v for k, v in ctx.exported.items()}, ctx.stdin, {k: v for k, v in ctx.names.items()},
+               ctx.allexport, [d for d in ctx.dirs] if ctx.dirs is not None else None)
 
 
 def merge_uncertain(ctx, branch):
@@ -198,8 +204,18 @@ def merge_uncertain(ctx, branch):
         ctx.vars.values[n] = NUMBER if number and isinstance(branch.vars.values[n], Number) else UNKNOWN
     for k, v in branch.vars.attrs.items():
         ctx.vars.attrs[k] = v
+    for k, v in branch.vars.refs.items():
+        ctx.vars.refs[k] = v
     for k, v in branch.exported.items():
         ctx.exported[k] = v
+    # (a name the branch made an alias or hashed: what it runs, maybe that)
+    for k, v in branch.names.items():
+        if k not in ctx.names or ctx.names[k] != v:
+            ctx.names[k] = ("alias", None)
+    if branch.allexport:
+        ctx.allexport = True
+    if branch.dirs != ctx.dirs:
+        ctx.dirs = None
 
 
 def offset(text, node):
@@ -582,8 +598,14 @@ def simple(rt, w,node, ctx, stdin):
         # (assignments only: they set the shell's variables)
         for a in assigns:
             assignment_arithmetic(rt, w, a, ctx, ctx.vars, span)
-            name, _ = assign(a, ctx, ctx.vars)
+            name, shown = assign(a, ctx, ctx.vars)
             expanded_later(rt, w, ctx, span, name, var_get(ctx.vars, name))
+            lookup_table(rt, w, ctx, span, a, name)
+            if name == "DIRSTACK":
+                # (the directory stack, set: what pushd and popd find in it)
+                ctx.dirs = None
+            if len(children(a, "subscript")) == 0:
+                exported_now(ctx, name, shown)
         for r in reds:
             if writes(r) or reads(r):
                 w.r.executions.append(execution([Field([""], False, False)], {}, reds, ctx.cwd, span, ctx.via, None,
@@ -613,6 +635,55 @@ def simple(rt, w,node, ctx, stdin):
     run(rt, w,argv, env, reds, ctx, span, given, None)
     w.r.executions[first].words = written
     link_procsubs(w, ctx, w.r.executions[first], argv + [r.target for r in reds if r.target is not None])
+
+
+def exported_now(ctx, name, shown):
+    """NAME=value with no command: the commands after get it too when it's
+    exported (export NAME before, set -a), or may be (one the agent's shell
+    inherits: PATH, HOME; any whose value changes what runs, as if); set
+    through a nameref, what it names, unknown."""
+    if name in ctx.vars.refs and ctx.vars.refs[name] != "*":
+        t = ctx.vars.refs[name]
+        if t == "?":
+            for k in ctx.exported:
+                ctx.exported[k] = Field([Dynamic(None, "$" + k)], False, False)
+        else:
+            exported_now(ctx, t, Field([Dynamic(None, "$" + t)], False, False))
+        return
+    if name in ctx.exported or ctx.allexport or env_role(name) is not None:
+        ctx.exported[name] = shown
+
+
+# The shell's tables of what a command name runs, as variables
+LOOKUP_TABLES = {"BASH_CMDS": "hash", "BASH_ALIASES": "alias"}
+
+
+def lookup_table(rt, w, ctx, span, a, name):
+    """BASH_CMDS[git]=/tmp/x: git runs /tmp/x, as hash -p; BASH_ALIASES[g]=
+    TEXT: an alias. Set otherwise (the whole array, a key only running
+    tells): what any name runs, only running tells."""
+    if name not in LOOKUP_TABLES:
+        return
+    subs = children(a, "subscript")
+    vals = children(a, "word")
+    key = None
+    if len(subs) == 1 and len(children(a, "array")) == 0:
+        key = subs[0].text
+        if key.startswith("[") and key.endswith("]"):
+            key = key[1 : len(key) - 1]
+        if not is_name(key.replace("-", "_").replace(".", "_")):
+            key = None
+    value = None
+    if key is not None and len(vals) == 1:
+        value = field_static(expand_assignment(vals[0], ctx.vars, ctx.home))
+    op = children(a, "assign_op")[0].text
+    if key is None or op != "=":
+        unknown(rt, w, name + ": what commands run, changed in a way only running tells", span, ctx, "lookup_path",
+                [])
+    elif LOOKUP_TABLES[name] == "hash" and value is not None:
+        ctx.names[key] = ("hash", value)
+    else:
+        ctx.names[key] = ("alias", value)
 
 
 def expanded_later(rt, w, ctx, span, name, value):
@@ -755,10 +826,23 @@ def numeric_field(f, variables, home):
     return True
 
 
+def through_ref(variables, name):
+    """Setting a nameref sets what it names: that unknown now; one whose
+    target only running tells, any."""
+    if name not in variables.refs:
+        return
+    t = variables.refs[name]
+    if t == "?":
+        variables.values = {k: UNKNOWN for k in variables.values}
+    elif t != "*":
+        variables.values[t] = UNKNOWN
+
+
 def assign(node, ctx, variables):
     """(name, the value shown): the variable set in variables."""
     name = children(node, "name")[0].text
     op = children(node, "assign_op")[0].text
+    through_ref(variables, name)
     index = children(node, "subscript")
     arr = children(node, "array")
     val = children(node, "word")
@@ -973,6 +1057,11 @@ def windows_shell(rt, w, e, ctx, name):
             words.append('"' + s + '"' if " " in s else s)
         cw = cmd_walker(w.r, ctx.home, ctx.depth + 1, e.via, False)
         cw.cwd = ctx.cwd
+        # (its stdin: more commands, with /k or no /c)
+        if e.stdin is not None:
+            cw.piped = True
+            cw.stdin_text = e.stdin.text
+            cw.piped_from = e.stdin.producer
         cmd(rt, cw, " ".join(words), e.span)
         return
     pw = walker(w.r, ctx.home, ctx.depth + 1)
@@ -1141,12 +1230,79 @@ def unknown_all(ctx):
     ctx.vars.values = {k: UNKNOWN for k in ctx.vars.values}
 
 
+def cd_target(e, ctx, target):
+    """Where cd TARGET goes; None: only running tells (CDPATH=/ cd etc:
+    /etc if it's there)."""
+    if cdpath_matters(e, ctx, target):
+        return None
+    return paths.join(ctx.cwd, target)
+
+
+def stack_change(e, ctx, name, args):
+    """pushd DIR, pushd (the top two swapped), pushd +N / -N (the stack
+    rotated: its Nth entry on top), popd, popd +N / -N (that entry
+    removed); -n: the directory isn't changed. The stack is the current
+    directory and ctx.dirs."""
+    no_cd = False
+    ops = []
+    for a in args:
+        s = field_static(a)
+        if s == "-n":
+            no_cd = True
+        elif s != "--":
+            ops.append(a)
+    full = [ctx.cwd] + ctx.dirs if ctx.dirs is not None else None
+    s = field_static(ops[0]) if len(ops) > 0 else ""
+    numbered = s is not None and len(s) > 1 and (s[0] == "+" or s[0] == "-") and is_digits(s[1:])
+    if s is None or (full is None and (numbered or len(ops) == 0 or name == "popd")):
+        ctx.cwd = None
+        ctx.dirs = None
+        return
+    if name == "pushd" and len(ops) > 0 and not numbered:
+        target = cd_target(e, ctx, s)
+        if no_cd:
+            ctx.dirs = [target] + ctx.dirs if ctx.dirs is not None else None
+        else:
+            ctx.dirs = full
+            ctx.cwd = target
+        return
+    n = 0
+    if numbered:
+        n = int(s[1:])
+        if s[0] == "-":
+            n = len(full) - 1 - n
+    elif name == "popd":
+        n = 0
+    else:
+        n = 1
+    if n < 0 or n >= len(full) or (name == "popd" and len(full) < 2):
+        # (no such entry: an error, nothing changes)
+        return
+    if name == "pushd" and numbered:
+        rotated = full[n:] + full[:n]
+    elif name == "pushd":
+        # (no operand: the top two swapped)
+        rotated = [full[1], full[0]] + full[2:]
+    elif no_cd and n == 0:
+        rotated = [full[0]] + full[2:]
+    else:
+        rotated = full[:n] + full[n + 1 :]
+    if no_cd and name == "pushd":
+        ctx.dirs = None
+        return
+    if no_cd:
+        ctx.dirs = rotated[1:]
+        return
+    ctx.cwd = rotated[0]
+    ctx.dirs = rotated[1:]
+
+
 def builtin_effects(rt, w,e, ctx):
     """What a builtin changes in the shell (the variables, the working
     directory), and the code eval and source run."""
     name = exec_name(e)
     args = e.argv[1:]
-    if name == "cd" or name == "pushd":
+    if name == "cd":
         ops = []
         for a in args:
             s = field_static(a)
@@ -1155,17 +1311,15 @@ def builtin_effects(rt, w,e, ctx):
         if len(ops) == 0:
             ctx.cwd = ctx.home
         elif field_known(ops[0]) and field_static(ops[0]) != "-":
-            target = field_static(ops[0])
-            if cdpath_matters(e, ctx, target):
-                # (CDPATH=/ cd etc: /etc if it's there; which, only running
-                # tells)
-                ctx.cwd = None
-            else:
-                ctx.cwd = paths.join(ctx.cwd, target)
+            ctx.cwd = cd_target(e, ctx, field_static(ops[0]))
         else:
             ctx.cwd = None
-    elif name == "popd":
-        ctx.cwd = None
+    elif name == "pushd" or name == "popd":
+        stack_change(e, ctx, name, args)
+    elif name == "dirs":
+        for a in args:
+            if field_static(a) == "-c":
+                ctx.dirs = []
     elif name == "let":
         # (each argument an arithmetic expression)
         for a in args:
@@ -1187,6 +1341,11 @@ def builtin_effects(rt, w,e, ctx):
         array_flag = False
         integer_flag = False
         assoc_flag = False
+        # (export -n, declare +x: no longer exported; declare -n: a nameref;
+        # -f: functions)
+        unexport = False
+        ref_flag = False
+        function_flag = False
         for x in args:
             s = field_static(x)
             if field_known(x) and s.startswith("-"):
@@ -1198,9 +1357,42 @@ def builtin_effects(rt, w,e, ctx):
                     integer_flag = True
                 if "A" in s:
                     assoc_flag = True
+                if "n" in s:
+                    if name == "export":
+                        unexport = True
+                    else:
+                        ref_flag = True
+                if "f" in s:
+                    function_flag = True
+            elif field_known(x) and s.startswith("+") and "x" in s:
+                unexport = True
         for a in args:
             s = field_static(a)
-            if s is not None and s.startswith("-"):
+            if s is not None and (s.startswith("-") or s.startswith("+")):
+                continue
+            if function_flag:
+                # (export -f f: a bash started after defines f, run in place
+                # of the command f)
+                if exported_flag and s is not None and is_name(s):
+                    ctx.exported["BASH_FUNC_" + s + "%%"] = Field([Dynamic(None, "")], False, False)
+                elif exported_flag:
+                    unknown(rt, w, "export -f of functions only running tells", e.span, ctx, "code", [])
+                continue
+            if ref_flag:
+                # (declare -n r=x: r is x; with no target, the first value
+                # set is the target)
+                if s is None:
+                    unknown_all(ctx)
+                    continue
+                r, eq, target = s.partition("=")
+                target = target.partition("[")[0]
+                if eq == "" or not is_name(target) or (target in ctx.vars.refs and ctx.vars.refs[target] != "*"):
+                    ctx.vars.refs[r] = "?"
+                else:
+                    ctx.vars.refs[r] = target
+                    ctx.vars.refs[target] = "*"
+                    ctx.vars.values[target] = UNKNOWN
+                ctx.vars.values[r] = UNKNOWN
                 continue
             if name != "export":
                 named_subscript(rt, w, ctx, e.span, a)
@@ -1228,17 +1420,45 @@ def builtin_effects(rt, w,e, ctx):
                     v = NUMBER
                 if "[" in n:
                     ctx.vars.values[n.partition("[")[0]] = UNKNOWN
+                    if n.partition("[")[0] in LOOKUP_TABLES:
+                        unknown(rt, w, n.partition("[")[0] + ": what commands run, changed by " + name, e.span, ctx,
+                                "lookup_path", [])
                 else:
+                    through_ref(ctx.vars, n)
                     ctx.vars.values[n] = v
                     expanded_later(rt, w, ctx, e.span, n, v)
+                    shown = Field([v], False, False) if isinstance(v, str) else Field([Dynamic(None, "$" + n)],
+                                                                                       False, False)
                     if exported_flag:
-                        if isinstance(v, str):
-                            ctx.exported[n] = Field([v], False, False)
-                        else:
-                            ctx.exported[n] = Field([Dynamic(None, "$" + n)], False, False)
+                        ctx.exported[n] = shown
+                    else:
+                        exported_now(ctx, n, shown)
             elif (name == "declare" or name == "typeset" or name == "local") and array_flag:
                 ctx.vars.values[s] = []
+            elif exported_flag and n in ctx.vars.values:
+                # (export NAME: the value it has now, the commands' after)
+                v = var_get(ctx.vars, n)
+                ctx.exported[n] = Field([v], False, False) if isinstance(v, str) else \
+                    Field([Dynamic(None, "$" + n)], False, False)
+            if unexport and n in ctx.exported:
+                ctx.exported.pop(n)
     elif name == "set":
+        # (set -a, -o allexport: each variable set from then on exported)
+        for k in range(len(args)):
+            s = field_static(args[k])
+            if s is None:
+                ctx.allexport = True
+            elif s == "--" or s == "-":
+                break
+            elif (s.startswith("-") or s.startswith("+")) and not s.startswith("--"):
+                if s[1:] == "o" and k + 1 < len(args):
+                    o = field_static(args[k + 1])
+                    if o is None or o == "allexport":
+                        ctx.allexport = s.startswith("-") or o is None
+                elif "a" in s[1:]:
+                    ctx.allexport = s.startswith("-")
+            elif not s.startswith("-"):
+                break
         for k in range(len(args)):
             if field_known(args[k]) and field_static(args[k]) == "--":
                 rest = args[k + 1 :]

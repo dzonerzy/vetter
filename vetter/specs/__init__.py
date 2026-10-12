@@ -85,6 +85,8 @@ def _spec(s):
 
 SPECS = {name: _spec(s) for name, s in py_specs.SPECS.items()}
 ENV = dict(py_specs.ENV)
+# (names with a * in them: CARGO_TARGET_*_LINKER, any triple's)
+ENV_PATTERNS = [(k.partition("*")[0], k.partition("*")[2], v) for k, v in ENV.items() if "*" in k]
 EMPTY = _spec(py_specs.Spec({}))
 
 DOWNLOADERS = {"curl", "wget", "fetch", "aria2c", "http", "xh"}
@@ -505,7 +507,94 @@ def cmake_command(rt, w, e, ctx, args):
 
 def apply_specs(rt, w, e, ctx):
     """The execution's roles from its spec, and what its arguments and
-    environment run."""
+    environment run. The project's code it runs (make's recipes, npm's
+    scripts, the tests) is where it works on: the folder -C, --prefix name,
+    or where it runs."""
+    first = len(w.r.unknowns)
+    spec_roles(rt, w, e, ctx)
+    dest = extraction(e)
+    if dest is not None:
+        e.roles.append(Role("extract", dest, None))
+    where = None
+    for k in range(first, len(w.r.unknowns)):
+        u = w.r.unknowns[k]
+        if (u.kind == "project_code" or u.kind == "package_script") and len(u.paths) == 0:
+            if where is None:
+                where = project_dirs(e)
+            for d in where:
+                u.paths.append(d)
+
+
+def extraction(e):
+    """Where an archive tool extracts to (tar x, unzip, 7z x, cpio -i):
+    what's below it after may be a link the archive made, to anywhere;
+    None: it doesn't extract."""
+    from ..shells.bash.resolve import exec_name
+
+    name = exec_name(e)
+    args = e.argv[1:]
+    words = [field_static(a) for a in args]
+    dest = Field(["."], False, False)
+    found = False
+    if name == "tar" or name == "bsdtar" or name == "gtar":
+        for k in range(len(words)):
+            s = words[k]
+            if s is None:
+                continue
+            if s == "--extract" or s == "--get" or (k == 0 and not s.startswith("-") and "x" in s) \
+                    or (s.startswith("-") and not s.startswith("--") and "x" in s[1:]):
+                found = True
+            if (s == "-C" or s == "--directory") and k + 1 < len(args):
+                dest = args[k + 1]
+            elif s.startswith("--directory="):
+                dest = Field([s[12:]], False, False)
+    elif name == "unzip":
+        found = True
+        for k in range(len(words)):
+            s = words[k]
+            if s is not None and s.startswith("-") and not s.startswith("--") and \
+                    ("l" in s or "t" in s or "v" in s or "p" in s or "Z" in s or "c" in s):
+                found = False
+            if s == "-d" and k + 1 < len(args):
+                dest = args[k + 1]
+            elif s is not None and s.startswith("-d") and len(s) > 2:
+                dest = Field([s[2:]], False, False)
+    elif name == "7z" or name == "7za" or name == "7zr":
+        for k in range(len(words)):
+            s = words[k]
+            if s is None:
+                continue
+            if not s.startswith("-") and not found and (s == "x" or s == "e"):
+                found = True
+            elif s.startswith("-o") and len(s) > 2:
+                dest = Field([s[2:]], False, False)
+    elif name == "cpio":
+        for k in range(len(words)):
+            s = words[k]
+            if s is None:
+                continue
+            if s == "--extract" or (s.startswith("-") and not s.startswith("--") and "i" in s[1:]):
+                found = True
+            if (s == "-D" or s == "--directory") and k + 1 < len(args):
+                dest = args[k + 1]
+    return dest if found else None
+
+
+def project_dirs(e):
+    """The folders a tool works on: what its options name (npm --prefix,
+    cmake -S, pytest's paths), or the one it's told to run in (make -C), or
+    where it runs."""
+    out = [r.value for r in e.roles if r.role == "project"]
+    if len(out) == 0:
+        for r in e.roles:
+            if r.role == "cwd":
+                out = [r.value]
+    if len(out) == 0:
+        out = [Field(["."], False, False)]
+    return out
+
+
+def spec_roles(rt, w, e, ctx):
     from ..shells.bash.resolve import exec_name, unknown
 
     apply_env(rt, w, e, ctx)
@@ -736,8 +825,16 @@ def role(rt, w, e, ctx, r, value, option, spec):
     if r == "reg_write" or r == "reg_delete":
         r = r[4:]
         value = registry(value)
+    if r == "project_file":
+        # (cargo --manifest-path DIR/Cargo.toml, pytest a/test_x.py::t: the
+        # folder it's in)
+        if field_known(value):
+            s = field_static(value).partition("::")[0]
+            cut = max(s.rfind("/"), s.rfind("\\"))
+            value = Field([s[:cut] if cut > 0 else ("/" if cut == 0 else ".")], False, False)
+        r = "project"
     if r == "write" or r == "read" or r == "delete" or r == "url" or r == "cwd" or r == "image" \
-            or r == "docker_volume":
+            or r == "docker_volume" or r == "project":
         e.roles.append(Role(r, value, option))
         if r == "write" and name in DOWNLOADERS:
             downloaded(rt, w, e, value)
@@ -793,6 +890,100 @@ def role(rt, w, e, ctx, r, value, option, spec):
                 code(rt, w, val if "/" in first else "git-credential-" + val, ctx, e.span, "git " + key, False, None)
         elif cr is not None and cr != "plain":
             role(rt, w, e, ctx, cr, Field([val], False, False), "-c " + key, spec)
+    elif r == "rustc_extern":
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": a crate only running tells", e.span, ctx, "code", [])
+        elif "=" in field_static(value):
+            role(rt, w, e, ctx, "code_file", Field([field_static(value).partition("=")[2]], False, False), option,
+                 spec)
+    elif r == "read_or_list":
+        # (7z a ARCHIVE @LIST: the files LIST names)
+        if field_known(value) and field_static(value).startswith("@") and len(field_static(value)) > 1:
+            role(rt, w, e, ctx, "file_list", Field([field_static(value)[1:]], False, False), option, spec)
+        else:
+            e.roles.append(Role("read", value, option))
+    elif r == "archive_switch":
+        # (7z -i@LIST, -ir!PATH, -x...: the files a list names, a path's)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": files only running tells", e.span, ctx, "code", [])
+            return
+        s = field_static(value)
+        at = s.find("@")
+        bang = s.find("!")
+        if at >= 0 and (bang < 0 or at < bang):
+            role(rt, w, e, ctx, "file_list", Field([s[at + 1 :]], False, False), option, spec)
+        elif bang >= 0 and option == "-i":
+            e.roles.append(Role("read", Field([s[bang + 1 :]], False, False), option))
+    elif r == "awk_w":
+        # (mawk -W exec=FILE: the program in FILE; -W exec FILE: the
+        # operand after, read as the program's file)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": an option only running tells", e.span, ctx, "code", [])
+        elif awk_exec(value):
+            val = field_static(value).partition("=")[2]
+            if val != "":
+                role(rt, w, e, ctx, "code_file", Field([val], False, False), option, spec)
+            else:
+                unknown(rt, w, labelled(name, option) + " exec: runs the code in the file after it", e.span, ctx,
+                        "code_file", [])
+    elif r == "options:java" or r == "options:javac":
+        # (javac -J-agentpath:...: an option of the JVM it runs in)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": an option only running tells", e.span, ctx, "configured", [])
+        else:
+            pspec = SPECS[r[8:]]
+            apply_options(rt, w, e, ctx, pspec, parse([value], pspec).options, None, [])
+    elif r == "gradle_property":
+        # (-Dorg.gradle.jvmargs=...: the daemon's JVM options;
+        # org.gradle.java.home: its java)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": a setting only running tells", e.span, ctx, "configured", [])
+            return
+        key, _, val = field_static(value).partition("=")
+        if key == "org.gradle.jvmargs":
+            words = split_words(val)
+            if words is None:
+                unknown(rt, w, labelled(name, option) + ": JVM options vetter can't split", e.span, ctx, "configured",
+                        [])
+            else:
+                pspec = SPECS["java"]
+                p = parse([Field([x], False, False) for x in words], pspec)
+                apply_options(rt, w, e, ctx, pspec, p.options, None, [])
+        elif key == "org.gradle.java.home":
+            role(rt, w, e, ctx, "program_dir", Field([val], False, False), option + key, spec)
+        elif key.startswith("org.gradle.") and (key.endswith(".home") or key.endswith(".dir")
+                                                 or key.endswith("installations.paths")):
+            unknown(rt, w, labelled(name, option) + key + ": sets what it runs", e.span, ctx, "configured", [])
+    elif r == "java_log":
+        # (-Xlog:what:file=PATH:...: the log written there)
+        if field_known(value):
+            path = log_file(field_static(value))
+            if path is not None:
+                e.roles.append(Role("write", Field([path], False, False), option))
+        else:
+            unknown(rt, w, labelled(name, option) + ": a log written where only running tells", e.span, ctx, "code",
+                    [])
+    elif r == "java_xx":
+        # (-XX:LogFile=PATH writes it; -XX:OnError=CMD runs it)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": a setting only running tells", e.span, ctx, "configured", [])
+            return
+        key, _, val = field_static(value).partition("=")
+        if key in JAVA_XX_WRITES:
+            e.roles.append(Role("write", Field([val], False, False), option + key))
+        elif key == "OnError" or key == "OnOutOfMemoryError":
+            for c in val.split(";"):
+                code(rt, w, c, ctx, e.span, labelled(name, option + key), False, None)
+        elif key == "Flags" or key == "VMOptionsFile":
+            role(rt, w, e, ctx, "config_file", Field([val], False, False), option + key, spec)
+        elif key in JAVA_XX_PATHS:
+            role(rt, w, e, ctx, "classpath", Field([val], False, False), option + key, spec)
+    elif r == "interpreter":
+        # (UV_PYTHON=/tmp/p: that interpreter runs; UV_PYTHON=3.12: one found)
+        if not field_known(value):
+            unknown(rt, w, labelled(name, option) + ": an interpreter only running tells", e.span, ctx, "code", [])
+        elif "/" in field_static(value) or "\\" in field_static(value):
+            role(rt, w, e, ctx, "program", value, option, spec)
     elif r == "sed_script" or r == "awk_program":
         # (read with the operands: all of a program's pieces together,
         # script_operands)
@@ -899,6 +1090,29 @@ def role(rt, w, e, ctx, r, value, option, spec):
         # (a setting that changes what it runs, its effect not followed)
         unknown(rt, w, labelled(name, option) + " " + field_text(value) + ": sets what it runs", e.span, ctx,
                 "configured", [])
+
+
+# java -XX:KEY=PATH: files the JVM writes, paths its classes come from
+JAVA_XX_WRITES = {"LogFile", "ErrorFile", "HeapDumpPath", "ReplayDataFile", "PerfDataSaveFile", "SharedArchiveFile",
+                  "ArchiveClassesAtExit", "DumpLoadedClassList"}
+JAVA_XX_PATHS = {"SharedClassListFile"}
+
+
+def log_file(s):
+    """-Xlog's output: :file=PATH after what's logged (a Windows path's
+    drive colon its own); None: the console."""
+    k = s.find("file=")
+    if k < 0:
+        return None
+    rest = s[k + 5 :]
+    if rest.startswith('"'):
+        end = rest.find('"', 1)
+        return rest[1:end] if end > 0 else rest[1:]
+    end = rest.find(":")
+    if end == 1 and len(rest) > 2 and (rest[2] == "\\" or rest[2] == "/"):
+        # (C:\log.txt)
+        end = rest.find(":", 2)
+    return rest if end < 0 else rest[:end]
 
 
 def link_operands(e, operands):
@@ -1081,6 +1295,15 @@ def option_names(e):
     return out
 
 
+def awk_exec(value):
+    """mawk -W exec[=FILE] (any abbreviation, -W e): the program's file;
+    an unknown -W: maybe."""
+    if not field_known(value):
+        return True
+    key = field_static(value).partition("=")[0]
+    return key != "" and "exec".startswith(key)
+
+
 def script_operands(rt, w, e, ctx, kind, operands):
     """sed/awk: the first operand is the program unless -e/-f gave one; the
     program's pieces (each -e, --expression, --source) read together, as
@@ -1096,7 +1319,9 @@ def script_operands(rt, w, e, ctx, kind, operands):
         if o in pieces_opts and v is not None:
             pieces.append(v)
             given = True
-        elif o == "-f" or o == "--file":
+        elif o == "-f" or o == "--file" or (kind == "awk" and (o == "-E" or o == "--exec")):
+            given = True
+        elif kind == "awk" and o == "-W" and v is not None and awk_exec(v):
             given = True
     names = option_names(e)
     for o in names:
@@ -1546,12 +1771,27 @@ def is_shell_name(s):
     return True
 
 
+def env_role(var):
+    """What the variable is to the programs reading it: its name's, or a
+    pattern's it matches; None: nothing."""
+    if var in ENV:
+        return ENV[var]
+    for head, tail, r in ENV_PATTERNS:
+        if len(var) > len(head) + len(tail) and var.startswith(head) and var.endswith(tail):
+            return r
+    return None
+
+
 def apply_env(rt, w, e, ctx):
     from ..shells.bash.resolve import code, copy, exec_name, expanded_later, run, unknown
 
     name = exec_name(e)
     who = name if name is not None and name != "" else "it"
-    for var, value in e.env.items():
+    whole = e.env
+    for var, value in whole.items():
+        # (what a variable makes it run runs without it: RUSTFLAGS' linker
+        # isn't given RUSTFLAGS again)
+        e.env = {k: v for k, v in whole.items() if k != var}
         if var.startswith("BASH_FUNC_"):
             # (BASH_FUNC_f%%='() { ...; }': a bash it starts defines f, run
             # in place of the command f)
@@ -1565,10 +1805,11 @@ def apply_env(rt, w, e, ctx):
             else:
                 unknown(rt, w, var + ": a bash function only running tells", e.span, ctx, "code", [])
             continue
-        if var not in ENV:
+        r = env_role(var)
+        if var == "HOME" and field_static(value) == ctx.home:
+            # (HOME=$HOME: the home it has)
             continue
-        r = ENV[var]
-        if r == "plain":
+        if r is None or r == "plain":
             continue
         if r.startswith("options:"):
             # (MAKEFLAGS, GOFLAGS, JAVA_TOOL_OPTIONS: more options, read as
@@ -1579,7 +1820,10 @@ def apply_env(rt, w, e, ctx):
             if not field_known(value):
                 unknown(rt, w, var + ": " + prog + " options only running tells", e.span, ctx, "configured", [])
                 continue
-            words = split_words(field_static(value))
+            if var.startswith("CARGO_ENCODED_"):
+                words = [x for x in field_static(value).split("\x1f") if x != ""]
+            else:
+                words = split_words(field_static(value))
             if words is None:
                 unknown(rt, w, var + ": " + prog + " options vetter can't split", e.span, ctx, "configured", [])
                 continue
@@ -1662,3 +1906,4 @@ def apply_env(rt, w, e, ctx):
             if var in inner_ctx.exported:
                 inner_ctx.exported.pop(var)
             role(rt, w, e, inner_ctx, r, value, var, SPECS["git"] if "git" in SPECS else EMPTY)
+    e.env = whole

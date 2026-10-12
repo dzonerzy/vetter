@@ -190,6 +190,7 @@ positional = ["Path"]
 [cmdlet.params]
 Path = "cwd"
 LiteralPath = "cwd"
+StackName = "plain"
 
 [[cmdlet]]
 name = "Push-Location"
