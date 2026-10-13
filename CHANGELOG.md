@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-13
+
 ### Security
 - **`python -m` with a standard-library module** was the project's code,
   allowed: `-m timeit CODE`, `-m cProfile SCRIPT`, `-m base64 FILE` run or

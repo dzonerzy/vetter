@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vetter"
-version = "0.2.0"
+version = "0.2.1"
 description = "Vets every command your AI agent wants to run: bash, PowerShell, cmd.exe and inline Python read as they run, decided by a policy you can test."
 requires-python = ">=3.11"
 readme = "README.md"
