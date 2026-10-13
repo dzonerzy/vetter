@@ -43,6 +43,8 @@ from .stdlib import (
     PURE_CLASSES,
     PURE_MODULES,
     STDLIB,
+    STREAM_METHODS,
+    STREAMS,
 )
 from .syntax import parse
 
@@ -70,7 +72,8 @@ CONTAINERS = ("list", "tuple", "set", "dict", "seq")
 class V:
     """A value: kind (str, bytes, int, bool, none, list, tuple, set, dict,
     seq, data, opaque, module, attr, path, file, tempdir, method, fn,
-    class, identity, decorator, suppress, request, socket); text (a str's,
+    class, identity, decorator, suppress, request, socket, etree: an
+    ElementTree; file: a stream too, stdin's, a StringIO's); text (a str's,
     bytes', a path's, a module's or attribute's qualified name, a method's
     name); num (an int's); items (a list's, tuple's, set's; a dict's keys)
     and vals (a dict's values); glob: the text is a pattern (a name a
@@ -476,7 +479,7 @@ def datalike(v, depth):
         return False
     k = v.kind
     if k == "str" or k == "bytes" or k == "int" or k == "bool" or k == "none" or k == "data" or k == "file" \
-            or k == "request" or k == "socket":
+            or k == "request" or k == "socket" or k == "etree":
         return True
     if k == "list" or k == "tuple" or k == "set":
         for x in v.items:
@@ -713,6 +716,26 @@ def effect(py, verb, v, what):
         # (what it writes may be what was downloaded: running it later,
         # running downloaded code)
         py.w.r.downloads.add(field_static(f))
+
+
+def linked(py, target, link, symbolic, what):
+    """A link made at `link` to `target`: the link written; and what's
+    done through it later is done to the target, so the target read and
+    written too (as ln's spec has it). A symbolic link's relative target is
+    from the link's folder."""
+    effect(py, "write", link, what)
+    t, g = text_of(target)
+    if t is not None and symbolic and not t.startswith("/"):
+        lt, lg = text_of(link)
+        if lt is None:
+            t = None
+        else:
+            head = lt.rpartition("/")[0] if "/" in lt else "."
+            t = path_join(head if head != "" else "/", t)
+            g = g or lg
+    to = make_str(t, g) if t is not None else data()
+    effect(py, "read", to, what)
+    effect(py, "write", to, what)
 
 
 def env_fields(rt, py, given):
@@ -1963,6 +1986,8 @@ def attribute_of(rt, py, v, name):
             return V("none") if c is None else V("str", c)
         if qual in DATA_ATTRS:
             return data()
+        if qual in STREAMS:
+            return V("file")
         if qual == "sys.argv":
             return py.argv
         return V("attr", qual)
@@ -1970,8 +1995,11 @@ def attribute_of(rt, py, v, name):
         return path_property(py, v, name)
     if k == "tempdir" and name == "name":
         return make_str(v.text, True)
+    if k == "file" and name == "buffer":
+        # (sys.stdout.buffer: the same stream, as bytes)
+        return V("file")
     if k == "fn" or k == "str" or k == "bytes" or k == "int" or k == "bool" or k == "none" or k == "file" \
-            or k == "request" or k == "socket":
+            or k == "request" or k == "socket" or k == "etree":
         return data()
     if k in CONTAINERS:
         return data() if datalike(v, 0) else opaque()
@@ -2126,6 +2154,11 @@ def pure_name(qual):
     if m not in PURE_MODULES:
         return False
     rest = qual[len(m) + 1 :]
+    last = rest.rpartition(".")[2]
+    if last == "main" or last.startswith("_"):
+        # (base64.main(), quopri.main(): sys.argv's files read; a private
+        # name: anything)
+        return False
     if "." not in rest:
         return True
     return m + "." + rest.partition(".")[0] in PURE_CLASSES and "." not in rest.partition(".")[2]
@@ -2192,8 +2225,13 @@ def call_kind(rt, py, qual, kind, a, what):
         return pure_result(py, a)
     if kind == "read":
         p = arg(a, 0, "path")
+        if p is None:
+            p = arg(a, 0, "source")
         if p is not None:
             effect(py, "read", p, what)
+        if qual == "xml.etree.ElementTree.parse":
+            # (an ElementTree: its write() writes a path)
+            return V("etree")
         return data()
     if kind == "list":
         p = arg(a, 0, "path")
@@ -2242,8 +2280,10 @@ def call_kind(rt, py, qual, kind, a, what):
         if src is None or dst is None:
             cant(rt, py, qual + " with arguments only running tells")
             return data()
-        if kind != "link":
-            effect(py, "read", src, what)
+        if kind == "link":
+            linked(py, src, dst, qual == "os.symlink", what)
+            return V("none")
+        effect(py, "read", src, what)
         if kind == "move":
             effect(py, "delete", src, what)
         effect(py, "write", dst, what)
@@ -2335,6 +2375,9 @@ def call_kind(rt, py, qual, kind, a, what):
         network(rt, py, make_str("tcp://" + host.text, False) if host is not None and known_str(host) else data(),
                 True, what)
         return data()
+    if kind == "stream":
+        # (io.StringIO(), io.BytesIO(): a stream in memory, read and written)
+        return V("file")
     if kind == "suppress":
         return V("suppress")
     if kind == "identity":
@@ -2823,6 +2866,17 @@ def method(rt, py, recv, name, a, what):
         return path_method(rt, py, recv, name, a, what)
     if k == "socket":
         return socket_method(rt, py, recv, name, a, what)
+    if k == "etree":
+        # (an ElementTree: write(path) writes it, parse(path) reads it;
+        # its other methods are its elements')
+        if name == "write" or name == "parse":
+            p = arg(a, 0, "file" if name == "write" else "source")
+            if p is None:
+                cant(rt, py, "ElementTree." + name + " with arguments only running tells")
+            elif p.kind != "file":
+                effect(py, "write" if name == "write" else "read", p, what)
+            return V("none") if name == "write" else data()
+        return data_method(rt, py, V("data"), name, a)
     if k == "tempdir":
         if name == "cleanup":
             effect(py, "delete", make_str(recv.text, True), what)
@@ -2845,7 +2899,12 @@ def is_ascii(s):
 
 
 def data_method(rt, py, recv, name, a):
-    if name not in DATA_METHODS or (py.leaked and recv.kind == "data"):
+    # (a stream's read and write: an open file's, stdin's and stdout's, a
+    # StringIO's, what they touch decided when they were opened; anything
+    # else's .read(), .write() may open a path of its own (a ConfigParser's,
+    # an ElementTree's): not followed)
+    known = name in DATA_METHODS or (recv.kind == "file" and name in STREAM_METHODS)
+    if not known or (py.leaked and recv.kind == "data"):
         cant(rt, py, "calling ." + name + "() on a value only running tells")
         return opaque()
     invoke_args(rt, py, a, False)
@@ -3239,6 +3298,13 @@ def path_method(rt, py, p, name, a, what):
         return seq_of(make_path(path_join(p.text, pattern) if p.text is not None else None, True))
     if kind == "write" or kind == "delete":
         effect(py, kind, p, what)
+        return V("none")
+    if kind == "link":
+        # (p.symlink_to(target): p a link to target)
+        if a0 is None:
+            cant(rt, py, "Path." + name + " with arguments only running tells")
+            return V("none")
+        linked(py, a0, p, name == "symlink_to", what)
         return V("none")
     if kind == "move" or kind == "copy":
         if a0 is None:

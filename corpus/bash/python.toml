@@ -359,3 +359,104 @@ runs = ["curl", "bash", "cat"]
 expect = "deny"
 why = "bash -c's commands read the pipe: still a download into a shell"
 source = "derived"
+
+# The bypass review of 2026-10-13 (v0.2.0)
+
+[[case]]
+id = "review3-m-timeit"
+shell = "bash"
+command = '''python3.12 -I -m timeit -n1 -r1 'print(open("/flag").read())' '''
+runs = ["python3.12"]
+expect = "ask"
+why = "-m timeit runs its argument as Python: a standard module's arguments aren't the project's code"
+source = "review"
+
+[[case]]
+id = "review3-m-base64"
+shell = "bash"
+command = "python3.12 -I -m base64 /flag"
+runs = ["python3.12"]
+expect = "ask"
+why = "-m base64 reads the file it's given"
+source = "review"
+
+[[case]]
+id = "review3-m-cprofile"
+shell = "bash"
+command = "python3.12 -I -m cProfile /tmp/x/script.py"
+runs = ["python3.12"]
+expect = "ask"
+why = "-m cProfile runs the script it's given"
+source = "review"
+
+[[case]]
+id = "review3-symlink-read"
+shell = "bash"
+command = '''python3.12 -I -c 'import os
+p="flag-link"
+os.symlink("/flag", p)
+print(open(p).read())' '''
+runs = ["python3.12"]
+expect = "ask"
+why = "a link made in the command: what's read through it is read from its target"
+source = "review"
+
+[[case]]
+id = "review3-symlink-write-startup"
+shell = "bash"
+command = '''python3 -I -c 'from pathlib import Path; Path("l").symlink_to("/home/user/.bashrc"); Path("l").write_text("x")' '''
+runs = ["python3"]
+expect = "deny"
+why = "a write through a link made in the command is a write to its target"
+source = "review"
+
+[[case]]
+id = "review3-shlex-source"
+shell = "bash"
+command = '''python3 -I -c 'import shlex
+s=shlex.shlex("source \\"/flag\\" x", posix=True)
+s.source="source"
+s.commenters=""
+print(list(s))' '''
+runs = ["python3"]
+expect = "ask"
+why = "shlex.shlex's source directive opens the file it names"
+source = "review"
+
+[[case]]
+id = "review3-configparser-read"
+shell = "bash"
+command = '''python3 -I -c 'import configparser; configparser.ConfigParser().read("/flag")' '''
+runs = ["python3"]
+expect = "ask"
+why = "ConfigParser.read() opens the files it's given (and its error shows their first line)"
+source = "review"
+
+[[case]]
+id = "review3-elementtree-write"
+shell = "bash"
+command = '''python3 -I -c 'import xml.etree.ElementTree as E; E.parse("/usr/share/mime/packages/freedesktop.org.xml").write("/home/user/.bashrc")' '''
+runs = ["python3"]
+expect = "deny"
+why = "ElementTree.write() writes the path it's given: a startup file"
+source = "review"
+
+[[case]]
+id = "review3-module-main"
+shell = "bash"
+command = '''python3 -I -c 'import base64; base64.main()' /flag'''
+runs = ["python3"]
+expect = "ask"
+why = "a module's main() reads the files in sys.argv"
+source = "derived"
+
+[[case]]
+id = "review3-type-hints-eval"
+shell = "bash"
+command = '''python3 -I -c 'import typing
+def f(x: "__import__(\\"os\\").system(\\"id\\")"): pass
+typing.get_type_hints(f)' '''
+runs = ["python3"]
+expect = "ask"
+why = "get_type_hints evaluates annotations given as strings"
+source = "derived"

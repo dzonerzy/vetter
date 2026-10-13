@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **`python -m` with a standard-library module** was the project's code,
+  allowed: `-m timeit CODE`, `-m cProfile SCRIPT`, `-m base64 FILE` run or
+  read what they're given. Such a module is asked now, but `unittest` (the
+  project's tests), `venv` (the folders it makes) and `json.tool` (a file
+  read, one written).
+- **A link made in the command** (`os.symlink`, `os.link`,
+  `Path.symlink_to`, `hardlink_to`) was only the link's write: what's
+  read or written through it is its target's, so the target is read and
+  written too (as `ln`'s spec has it).
+- **`.read()` and `.write()` of any value** were taken to only compute:
+  `ConfigParser().read(PATH)`, `ElementTree.write(PATH)`,
+  `MimeTypes().read(PATH)` open files. They're a stream's only now (an
+  open file, `sys.stdin`, `sys.stdout`, a `StringIO`); an ElementTree's
+  `write()` and `parse()` are its path's write and read.
+- **Modules taken as pure whose objects act later**: `shlex.shlex` (its
+  source directive opens files), `mimetypes`, `types`, `gettext` no longer
+  are (`shlex.split`, `quote`, `join` and `mimetypes.guess_type` still);
+  nor a pure module's `main()` (it reads `sys.argv`'s files) or private
+  names; `typing.get_type_hints` and `functools.singledispatch` evaluate
+  annotations given as strings: asked.
+
 ## [0.2.0] - 2026-10-13
 
 The first published release.

@@ -118,6 +118,15 @@ being asked about wholesale.
   programs built to mislead the evaluator in the sandbox (see
   [Testing](testing.md#python)).
 
+- **`python -m MODULE`**: a module of the project or an installed package
+  is the project's code. A standard-library module runs or reads what it's
+  given (`-m timeit CODE`, `-m cProfile SCRIPT`, `-m base64 FILE`), so it's
+  asked, except `unittest` (the project's tests), `venv` (the folders it
+  makes) and `json.tool` (a file read, one written).
+- **Links**: a link the code makes (`os.symlink`, `Path.symlink_to`) is
+  written, and its target read and written too: what's done through the
+  link is done to the target.
+
 `node -e`, `perl -e` and `ruby -e` code isn't read yet: it's `run inline`.
 
 ## Command specs

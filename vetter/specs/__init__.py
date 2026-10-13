@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from ..glob import match
 from ..shells.bash.expand import Dynamic, Field, field_known, field_static, field_text
+from ..shells.python.stdlib import STDLIB as PYTHON_STDLIB
 from . import load as py_specs
 
 
@@ -768,6 +769,36 @@ def python_isolated(e):
     return False
 
 
+def stdlib_module(rt, w, e, ctx, name, m, rest):
+    """python -m MODULE ARGS, a module of Python's standard library: its
+    arguments are code (timeit, cProfile, pdb, trace), files it reads
+    (base64, zipfile) or writes: those vetter knows read as they are
+    (unittest: the project's tests; venv: the folders made; json.tool: a
+    file read, one written), the others asked."""
+    from ..shells.bash.resolve import unknown
+
+    words = [a for a in rest if not (field_known(a) and field_static(a).startswith("-"))]
+    if m == "unittest":
+        unknown(rt, w, name + " -m unittest: runs the project's tests", e.span, ctx, "project_code", [])
+    elif m == "venv":
+        for a in words:
+            e.roles.append(Role("write", a, "-m venv"))
+    elif m == "json.tool":
+        if len(words) > 0:
+            e.roles.append(Role("read", words[0], "-m json.tool"))
+        if len(words) > 1:
+            e.roles.append(Role("write", words[1], "-m json.tool"))
+    else:
+        unknown(rt, w, name + " -m " + m + ": the standard library's " + m + " given arguments vetter doesn't follow",
+                e.span, ctx, "inline_code", [])
+        return
+    if not python_isolated(e):
+        # (the current folder first on its module path: a module of that
+        # name there is what runs)
+        unknown(rt, w, name + " -m " + m + ": a " + m.partition(".")[0] + " in the folder it runs in would run",
+                e.span, ctx, "project_code", [])
+
+
 def flag(rt, w, e, ctx, label, value, given):
     """A flag (or a subcommand, or the program itself) that does what vetter
     doesn't see; given: what it works on."""
@@ -1073,6 +1104,8 @@ def role(rt, w, e, ctx, r, value, option, spec):
             inner(rt, w, e, [Field([PYTHON_MODULE_TOOLS[m]], False, False)] + rest, ctx, str(name) + " -m " + m, {})
         elif m in PYTHON_MODULE_SERVERS:
             unknown(rt, w, str(name) + " -m " + m + ": serves the folder it runs in", e.span, ctx, "package", [])
+        elif m.partition(".")[0] in PYTHON_STDLIB:
+            stdlib_module(rt, w, e, ctx, str(name), m, rest)
         else:
             unknown(rt, w, str(name) + " -m " + m + ": runs the module, the project's own or an installed one",
                     e.span, ctx, "project_code", [])

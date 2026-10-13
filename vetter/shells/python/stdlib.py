@@ -84,7 +84,7 @@ FUNCS = {
     "asyncio.wait": "pure", "asyncio.TimeoutError": "pure",
     # files in other forms
     "io.open": "open", "codecs.open": "open", "gzip.open": "open", "bz2.open": "open", "lzma.open": "open",
-    "io.StringIO": "pure", "io.BytesIO": "pure", "io.TextIOWrapper": "pure",
+    "io.StringIO": "stream", "io.BytesIO": "stream", "io.TextIOWrapper": "stream",
     "glob.glob": "list", "glob.iglob": "list", "glob.escape": "pure", "glob.has_magic": "pure",
     "json.load": "pure", "json.loads": "pure", "json.dump": "pure", "json.dumps": "pure",
     "json.JSONDecodeError": "pure", "json.JSONEncoder": "pure", "json.JSONDecoder": "pure",
@@ -95,8 +95,11 @@ FUNCS = {
     "xml.etree.ElementTree.tostring": "pure", "xml.etree.ElementTree.Element": "pure",
     "xml.etree.ElementTree.SubElement": "pure",
     "configparser.ConfigParser": "pure",
-    # shlex
+    # shlex (not shlex.shlex: its source directive reads files), mimetypes,
+    # types
     "shlex.split": "pure", "shlex.quote": "pure", "shlex.join": "pure",
+    "mimetypes.guess_type": "pure", "mimetypes.guess_extension": "pure", "mimetypes.guess_all_extensions": "pure",
+    "mimetypes.guess_file_type": "pure", "types.SimpleNamespace": "pure", "types.MappingProxyType": "pure",
     # sys
     "sys.exit": "exit", "sys.getsizeof": "pure", "sys.getrecursionlimit": "pure", "sys.getdefaultencoding": "pure",
     "sys.getfilesystemencoding": "pure", "sys.intern": "pure", "sys.exc_info": "pure",
@@ -197,10 +200,15 @@ PURE_MODULES = {
     "collections.abc", "heapq", "bisect", "random", "secrets", "hashlib", "hmac", "base64", "binascii", "zlib",
     "struct", "uuid", "decimal", "fractions", "numbers", "unicodedata", "html", "difflib", "pprint", "enum",
     "typing", "copy", "calendar", "colorsys", "ipaddress", "keyword", "errno", "stat", "re", "time", "datetime",
-    "zoneinfo", "fnmatch", "array", "dataclasses", "abc", "types", "reprlib", "weakref", "queue", "graphlib",
-    "string.templatelib", "json.decoder", "json.encoder", "shlex", "posixpath", "ntpath", "textwrap", "gettext",
-    "mimetypes", "email", "email.utils", "email.message", "quopri", "codecs", "contextvars",
+    "zoneinfo", "fnmatch", "array", "dataclasses", "abc", "reprlib", "weakref", "queue", "graphlib",
+    "string.templatelib", "json.decoder", "json.encoder", "posixpath", "ntpath", "textwrap",
+    "email", "email.utils", "email.message", "quopri", "codecs", "contextvars",
 }
+# (not pure modules, their objects acting later: shlex.shlex's source
+# directive reads a file, mimetypes.MimeTypes().read() one, types makes
+# classes, gettext reads where it's pointed; their computing functions are
+# in FUNCS. A pure module's main() reads its sys.argv's files: not pure,
+# nor its private names: pure_name)
 
 # Functions of the pure modules that don't only compute (types.FunctionType
 # makes a function from code; codecs.open: open's)
@@ -212,6 +220,9 @@ NOT_PURE = {
     "collections.namedtuple", "operator.methodcaller", "operator.attrgetter",
     # (may run ifconfig, ip: programs found on PATH)
     "uuid.uuid1", "uuid.getnode",
+    # (evaluate annotations given as strings: code)
+    "typing.get_type_hints", "typing.ForwardRef", "typing.evaluate_forward_ref", "functools.singledispatch",
+    "functools.singledispatchmethod",
 }
 
 # The classes of pure modules whose methods are pure too
@@ -250,8 +261,7 @@ CONSTS = {
 DATA_ATTRS = {
     "sys.version", "sys.version_info", "sys.platform", "sys.maxsize", "sys.byteorder", "sys.executable",
     "sys.prefix", "sys.base_prefix", "sys.exec_prefix", "sys.implementation", "sys.flags", "sys.float_info",
-    "sys.hexversion", "sys.api_version", "sys.copyright", "sys.stdin", "sys.stdout", "sys.stderr",
-    "sys.stdin.buffer", "sys.stdout.buffer", "sys.stderr.buffer", "sys.builtin_module_names",
+    "sys.hexversion", "sys.api_version", "sys.copyright", "sys.builtin_module_names",
     "sys.stdlib_module_names", "sys.orig_argv", "sys.maxunicode",
     "subprocess.PIPE", "subprocess.DEVNULL", "subprocess.STDOUT",
     "os.O_RDONLY", "os.O_WRONLY", "os.O_RDWR", "os.O_CREAT", "os.O_EXCL", "os.O_TRUNC", "os.O_APPEND",
@@ -282,8 +292,7 @@ DATA_METHODS = {
     "utctimetuple", "astimezone", "total_seconds", "toordinal", "ctime", "utcoffset", "tzname", "dst",
     "hexdigest", "digest", "geturl", "_replace", "_asdict", "returncode", "stdout", "stderr", "args",
     "check_returncode", "communicate", "wait", "poll", "pid",
-    "read", "readline", "readlines", "write", "writelines", "flush", "getvalue", "seek", "tell", "close",
-    "fileno", "isatty", "readable", "writable", "seekable", "buffer", "truncate",
+    "flush", "getvalue", "seek", "tell", "close", "fileno", "isatty", "readable", "writable", "seekable",
     "writerow", "writerows", "writeheader", "fieldnames", "line_num", "dialect",
     "getroot", "findtext", "iter", "itertext", "attrib", "tag", "text", "tail", "set",
     "sections", "has_section", "options", "has_option", "getint", "getfloat", "getboolean", "read_string",
@@ -298,6 +307,13 @@ DATA_METHODS = {
     "errno", "strerror", "filename", "code", "reason", "headers", "status", "msg", "output", "cmd",
 }
 
+# A stream's methods besides DATA_METHODS: an open file's, stdin's,
+# stdout's, a StringIO's (what they touch decided when they were opened)
+STREAM_METHODS = {"read", "readline", "readlines", "read1", "readinto", "write", "writelines", "truncate", "buffer"}
+
+# The streams of sys
+STREAMS = {"sys.stdin", "sys.stdout", "sys.stderr", "sys.__stdin__", "sys.__stdout__", "sys.__stderr__"}
+
 # Path's methods (and properties) and what they do
 PATH_METHODS = {
     "joinpath": "path", "with_name": "path", "with_suffix": "path", "with_stem": "path", "relative_to": "path",
@@ -311,7 +327,7 @@ PATH_METHODS = {
     "samefile": "read", "readlink": "read", "is_junction": "read",
     "iterdir": "list", "glob": "list", "rglob": "list", "walk": "list",
     "write_text": "write", "write_bytes": "write", "touch": "write", "mkdir": "write", "chmod": "write",
-    "lchmod": "write", "symlink_to": "write", "hardlink_to": "write",
+    "lchmod": "write", "symlink_to": "link", "hardlink_to": "link",
     "unlink": "delete", "rmdir": "delete",
     "rename": "move", "replace": "move", "move": "move", "move_into": "move",
     "copy": "copy", "copy_into": "copy",
