@@ -35,8 +35,11 @@ jobs:
             - name: The stock policy's tests
               run: vetter test
 
+            # (one process: zrun compiles vetter's code as each path is first
+            # reached, and parallel workers each compiled and optimized it
+            # at once, about 25 GB; one process takes about 6)
             - name: Test (both of zrun's modes, against the recorded answers)
-              run: python -m pytest -q
+              run: python -m pytest -q -n 0
 
             - name: The corpus
               run: python -m tools.corpus.decide_corpus
