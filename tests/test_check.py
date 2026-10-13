@@ -19,7 +19,9 @@ POLICIES = {"stock": (STOCK[0], STOCK[1]), "payload": (PAYLOAD_POLICY, "corpus.v
 
 
 def rule_where(r):
-    return None if r is None else [r.decision, r.reason, r.file, r.line, r.text, r.locked]
+    # (the policy file's name: where the checkout is differs from machine to machine)
+    return None if r is None else [r.decision, r.reason, r.file.replace("\\", "/").rpartition("/")[2], r.line,
+                                   r.text, r.locked]
 
 
 def decide(rt, command, shell, cwd, home, text, filename):
